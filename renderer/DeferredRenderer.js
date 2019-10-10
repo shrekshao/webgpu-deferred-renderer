@@ -531,6 +531,13 @@ export default class DeferredRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
+        const samplerRepeat = this.sampler = device.createSampler({
+            addressModeU: "repeat",
+            addressModeV: "repeat",
+            magFilter: "linear",
+            minFilter: "linear"
+        });
+
         const sampler = this.sampler = device.createSampler({
             magFilter: "linear",
             minFilter: "linear"
@@ -549,7 +556,7 @@ export default class DeferredRenderer {
                     }
                 }, {
                     binding: 1,
-                    resource: sampler,
+                    resource: samplerRepeat,
                 }, {
                     binding: 2,
                     resource: this.albedoMap.createView(),
@@ -603,11 +610,11 @@ export default class DeferredRenderer {
 
         // });
 
-        // const modelUrl = 'models/sponza.obj';
-        // const albedoUrl = 'models/color.jpg';
+        const modelUrl = 'models/sponza.obj';
+        const albedoUrl = 'models/color.jpg';
 
-        const modelUrl = 'models/di.obj';
-        const albedoUrl = 'models/file16.png';
+        // const modelUrl = 'models/di.obj';
+        // const albedoUrl = 'models/file16.png';
 
         const pModel = new Promise((resolve) => {
             OBJ.downloadMeshes({
