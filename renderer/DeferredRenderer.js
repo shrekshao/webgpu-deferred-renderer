@@ -73,16 +73,25 @@ void main() {
 `;
 
 const fragmentShaderBlinnPhongGLSL = `#version 450
+layout(set = 0, binding = 1) uniform sampler defaultSampler;
+layout(set = 0, binding = 2) uniform texture2D albedoMap;
+
 layout(location = 0) in vec4 fragPosition;
 layout(location = 1) in vec4 fragNormal;
 layout(location = 2) in vec2 fragUV;
 
 layout(location = 0) out vec4 outFragColor;
 
-// TODO: texture
-
 void main() {
-    outFragColor = vec4(clamp(fragNormal.xyz, vec3(0), vec3(1)), 1);  // temp
+
+    float intensity = dot( fragNormal.xyz, normalize( vec3(1,1,1) ) );
+    outFragColor = vec4(intensity * texture(sampler2D(albedoMap, defaultSampler), fragUV).rgb, 1.0);
+
+    // vec2 uv = vec2(fragUV.x, 1.0 - fragUV.y);
+    // outFragColor = vec4(intensity * texture(sampler2D(albedoMap, defaultSampler), uv).rgb, 1.0);
+
+    // outFragColor = vec4(fragUV, 0, 1);
+    // outFragColor = vec4(clamp(fragNormal.xyz, vec3(0), vec3(1)), 1);
     // outFragColor = vec4(1, 0, 0, 1);
 }
 `;
@@ -113,47 +122,87 @@ void main() {
 `;
 
 
-const vertexSize = 4 * 8; // Byte size of one cube vertex.
-const colorOffset = 4 * 4; // Byte offset of cube vertex color attribute.
-const cubeVerticesArray = new Float32Array([
-    // float4 position, float4 color
-    1, -1, 1, 1, 1, 0, 1, 1,
-    -1, -1, 1, 1, 0, 0, 1, 1,
-    -1, -1, -1, 1, 0, 0, 0, 1,
-    1, -1, -1, 1, 1, 0, 0, 1,
-    1, -1, 1, 1, 1, 0, 1, 1,
-    -1, -1, -1, 1, 0, 0, 0, 1,
-    1, 1, 1, 1, 1, 1, 1, 1,
-    1, -1, 1, 1, 1, 0, 1, 1,
-    1, -1, -1, 1, 1, 0, 0, 1,
-    1, 1, -1, 1, 1, 1, 0, 1,
-    1, 1, 1, 1, 1, 1, 1, 1,
-    1, -1, -1, 1, 1, 0, 0, 1,
-    -1, 1, 1, 1, 0, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, -1, 1, 1, 1, 0, 1,
-    -1, 1, -1, 1, 0, 1, 0, 1,
-    -1, 1, 1, 1, 0, 1, 1, 1,
-    1, 1, -1, 1, 1, 1, 0, 1,
-    -1, -1, 1, 1, 0, 0, 1, 1,
-    -1, 1, 1, 1, 0, 1, 1, 1,
-    -1, 1, -1, 1, 0, 1, 0, 1,
-    -1, -1, -1, 1, 0, 0, 0, 1,
-    -1, -1, 1, 1, 0, 0, 1, 1,
-    -1, 1, -1, 1, 0, 1, 0, 1,
-    1, 1, 1, 1, 1, 1, 1, 1,
-    -1, 1, 1, 1, 0, 1, 1, 1,
-    -1, -1, 1, 1, 0, 0, 1, 1,
-    -1, -1, 1, 1, 0, 0, 1, 1,
-    1, -1, 1, 1, 1, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 1, 1,
-    1, -1, -1, 1, 1, 0, 0, 1,
-    -1, -1, -1, 1, 0, 0, 0, 1,
-    -1, 1, -1, 1, 0, 1, 0, 1,
-    1, 1, -1, 1, 1, 1, 0, 1,
-    1, -1, -1, 1, 1, 0, 0, 1,
-    -1, 1, -1, 1, 0, 1, 0, 1,
-]);
+async function createTextureFromImage(device, src, usage) {
+    // Current hacky Texture impl for WebGPU
+    // Upload texture image data to gpu by uploading data array
+    // retrieved from a 2d canvas
+
+    const img = document.createElement('img');
+    img.src = src;
+    await img.decode();
+
+    const imageCanvas = document.createElement('canvas');
+    imageCanvas.width = img.width;
+    imageCanvas.height = img.height;
+
+    const imageCanvasContext = imageCanvas.getContext('2d');
+    imageCanvasContext.translate(0, img.height);
+    imageCanvasContext.scale(1, -1);
+    imageCanvasContext.drawImage(img, 0, 0, img.width, img.height);
+    const imageData = imageCanvasContext.getImageData(0, 0, img.width, img.height);
+    let data = null;
+
+    const rowPitch = Math.ceil(img.width * 4 / 256) * 256;
+    if (rowPitch == img.width * 4) {
+        data = imageData.data;
+    } else {
+        data = new Uint8Array(rowPitch * img.height);
+        for (let y = 0; y < canvas.height; ++y) {
+            for (let x = 0; x < canvas.width; ++x) {
+                let i = x * 4 + y * rowPitch;
+                data[i] = imageData.data[i];
+                data[i + 1] = imageData.data[i + 1];
+                data[i + 2] = imageData.data[i + 2];
+                data[i + 3] = imageData.data[i + 3];
+            }
+        }
+    }
+
+    const texture = device.createTexture({
+        size: {
+            width: img.width,
+            height: img.height,
+            depth: 1,
+        },
+        arrayLayerCount: 1,
+        mipLevelCount: 1,
+        sampleCount: 1,
+        dimension: "2d",
+        format: "rgba8unorm",
+        usage: GPUTextureUsage.COPY_DST | usage,
+    });
+
+    const textureDataBuffer = device.createBuffer({
+        size: data.byteLength,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    });
+
+    textureDataBuffer.setSubData(0, data);
+
+    const commandEncoder = device.createCommandEncoder({});
+    commandEncoder.copyBufferToTexture({
+        buffer: textureDataBuffer,
+        rowPitch: rowPitch,
+        arrayLayer: 0,
+        mipLevel: 0,
+        imageHeight: 0,
+    }, {
+            texture: texture,
+            mipLevel: 0,
+            arrayLayer: 0,
+            origin: { x: 0, y: 0, z: 0 }
+        }, {
+            width: img.width,
+            height: img.height,
+            depth: 1,
+        });
+
+    device.getQueue().submit([commandEncoder.finish()]);
+
+    // this.texture = texture;
+    return texture;
+}
+
 
 
 const quadVertexSize = 4 * 6;   // padding?
@@ -286,11 +335,24 @@ export default class DeferredRenderer {
         quadVerticesBuffer.setSubData(0, fullScreenQuadArray);
 
         const uniformsBindGroupLayout = device.createBindGroupLayout({
-            bindings: [{
-                binding: 0,
-                visibility: GPUShaderStage.VERTEX,
-                type: "uniform-buffer"
-            }]
+            bindings: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.VERTEX,
+                    type: "uniform-buffer"
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    type: "sampler"
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    type: "sampled-texture",
+                    textureComponentType: "float"
+                }
+            ]
         });
         
         const quadUniformsBindGroupLayout = this.quadUniformsBindGroupLayout = device.createBindGroupLayout({
@@ -469,18 +531,30 @@ export default class DeferredRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
-        // const uniformBindGroup1 = device.createBindGroup({
-        this.uniformBindGroup1 = device.createBindGroup({
+        const sampler = this.sampler = device.createSampler({
+            magFilter: "linear",
+            minFilter: "linear"
+        });
+
+        this.uniformBindGroupWriteGBuffer = device.createBindGroup({
             layout: uniformsBindGroupLayout,
-            bindings: [{
-                binding: 0,
-                resource: {
-                    buffer: uniformBuffer,
-                    offset: 0,
-                    // size: matrixSize
-                    size: uniformBufferSize
+            bindings: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: uniformBuffer,
+                        offset: 0,
+                        // size: matrixSize
+                        size: uniformBufferSize
+                    }
+                }, {
+                    binding: 1,
+                    resource: sampler,
+                }, {
+                    binding: 2,
+                    resource: this.albedoMap.createView(),
                 }
-            }],
+            ],
         });
 
         // // const uniformBindGroup2 = device.createBindGroup({
@@ -496,17 +570,14 @@ export default class DeferredRenderer {
         //     }]
         // });
 
-        const sampler = this.sampler = device.createSampler({
-            magFilter: "nearest",
-            minFilter: "nearest"
-        });
+        
 
         const quadUniformBindGroup = this.quadUniformBindGroup = this.device.createBindGroup({
             layout: this.quadUniformsBindGroupLayout,
             bindings: [
                 {
                     binding: 0,
-                    resource: this.sampler,
+                    resource: sampler,
                 },
                 {
                     binding: 1,
@@ -518,20 +589,44 @@ export default class DeferredRenderer {
 
     async setupScene() {
 
-        return new Promise((resolve) => {
+        // return new Promise((resolve) => {
+        //     OBJ.downloadMeshes({
+        //         'sponza': 'models/sponza.obj'
+        //         // 'sponza': 'models/di.obj'
+        //     }, resolve);
+        // }).then((meshes) => {
+        //     this.meshes = meshes;
+
+        //     // build mesh, drawable list here
+        //     const geometry = this.sponza = new Geometry(this.device);
+        //     geometry.fromObjMesh(meshes['sponza']);
+
+        // });
+
+        // const modelUrl = 'models/sponza.obj';
+        // const albedoUrl = 'models/color.jpg';
+
+        const modelUrl = 'models/di.obj';
+        const albedoUrl = 'models/file16.png';
+
+        const pModel = new Promise((resolve) => {
             OBJ.downloadMeshes({
-                // 'sponza': 'models/sponza.obj'
-                'sponza': 'models/di.obj'
+                'obj': modelUrl
             }, resolve);
-        }).then((meshes) => {
-            this.meshes = meshes;
+        });
+
+        const pColorTexture = createTextureFromImage(this.device, albedoUrl, GPUTextureUsage.SAMPLED);
+
+        await Promise.all([pModel, pColorTexture]).then((values) => {
+            this.meshes = values[0];
 
             // build mesh, drawable list here
             const geometry = this.sponza = new Geometry(this.device);
-            geometry.fromObjMesh(meshes['sponza']);
+            geometry.fromObjMesh(this.meshes['obj']);
 
+            const albedoMap = this.albedoMap = values[1];
+            console.log(albedoMap);
         });
-
     }
 
     updateTransformationMatrix() {
@@ -588,7 +683,7 @@ export default class DeferredRenderer {
         );
         passEncoder.setIndexBuffer(this.sponza.indicesBuffer);
 
-        passEncoder.setBindGroup(0, this.uniformBindGroup1);
+        passEncoder.setBindGroup(0, this.uniformBindGroupWriteGBuffer);
 
         // console.log(this.sponza.indices.length);
         passEncoder.drawIndexed(this.sponza.indices.length, 1, 0, 0, 0);
