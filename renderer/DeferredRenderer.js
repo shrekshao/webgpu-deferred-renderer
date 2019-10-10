@@ -48,7 +48,7 @@ layout(location = 2) out vec2 fragUV;
 
 void main() {
     fragPosition = uniforms.modelViewMatrix * vec4(position, 1);
-    fragNormal = uniforms.modelViewNormalMatrix * vec4(normal, 0);
+    fragNormal = normalize(uniforms.modelViewNormalMatrix * vec4(normal, 0));
     fragUV = uv;
     gl_Position = uniforms.projectionMatrix * fragPosition;
     // gl_Position = vec4(0.1 * position.xy, 0.5, 1);
@@ -82,7 +82,7 @@ layout(location = 0) out vec4 outFragColor;
 // TODO: texture
 
 void main() {
-    outFragColor = vec4(fragNormal.xyz, 1);  // temp
+    outFragColor = vec4(clamp(fragNormal.xyz, vec3(0), vec3(1)), 1);  // temp
     // outFragColor = vec4(1, 0, 0, 1);
 }
 `;
@@ -112,16 +112,6 @@ void main() {
 }
 `;
 
-
-// const fragmentShaderFullScreenQuadGLSL = `#version 450
-
-// layout(location = 0) in vec2 fragUV;
-// layout(location = 0) out vec4 outColor;
-
-// void main() {
-//     outColor = vec4(fragUV, 0.0, 1.0);
-// }
-// `;
 
 const vertexSize = 4 * 8; // Byte size of one cube vertex.
 const colorOffset = 4 * 4; // Byte offset of cube vertex color attribute.
@@ -165,50 +155,6 @@ const cubeVerticesArray = new Float32Array([
     -1, 1, -1, 1, 0, 1, 0, 1,
 ]);
 
-// const uvCubeVerticesArray = new Float32Array([
-//     // float3 position, float3 normal, float2 uv
-//     1, -1, 1, 0, -1, 0, 1, 1,
-//     -1, -1, -1, 0, -1, 0, 0, 0,
-//     -1, -1, 1, 0, -1, 0, 0, 1,
-//     1, -1, -1, 0, -1, 0, 1, 0,
-//     -1, -1, -1, 0, -1, 0, 0, 0,
-//     1, -1, 1, 0, -1, 0, 1, 1,
-
-//     1, 1, 1, 1, 0, 0, 1, 1,
-//     1, -1, -1, 1, 0, 0, 0, 0,
-//     1, -1, 1, 1, 0, 0, 0, 1,
-//     1, 1, -1, 1, 0, 0, 1, 0,
-//     1, -1, -1, 1, 0, 0, 0, 0,
-//     1, 1, 1, 1, 0, 0, 1, 1,
-
-//     -1, 1, 1, 0, 1, 0, 0, 1,
-//     1, 1, -1, 0, 1, 0, 1, 0,
-//     1, 1, 1, 0, 1, 0, 1, 1,
-//     -1, 1, -1, 0, 1, 0, 0, 0,
-//     1, 1, -1, 0, 1, 0, 1, 0,
-//     -1, 1, 1, 0, 1, 0, 0, 1,
-
-//     -1, -1, 1, -1, 0, 0, 0, 1,
-//     -1, 1, -1, -1, 0, 0, 1, 0,
-//     -1, 1, 1, -1, 0, 0, 1, 1,
-//     -1, -1, -1, -1, 0, 0, 0, 0,
-//     -1, 1, -1, -1, 0, 0, 1, 0,
-//     -1, -1, 1, -1, 0, 0, 0, 1,
-
-//     1, 1, 1, 0, 0, 1, 1, 1,
-//     -1, -1, 1, 0, 0, 1, 0, 0,
-//     -1, 1, 1, 0, 0, 1, 0, 1,
-//     -1, -1, 1, 0, 0, 1, 0, 0,
-//     1, 1, 1, 0, 0, 1, 1, 1,
-//     1, -1, 1, 0, 0, 1, 1, 0,
-
-//     1, -1, -1, 0, 0, -1, 1, 0,
-//     -1, 1, -1, 0, 0, -1, 0, 1,
-//     -1, -1, -1, 0, 0, -1, 0, 0,
-//     1, 1, -1, 0, 0, -1, 1, 1,
-//     -1, 1, -1, 0, 0, -1, 0, 1,
-//     1, -1, -1, 0, 0, -1, 1, 0,
-// ]);
 
 const quadVertexSize = 4 * 6;   // padding?
 const quadUVOffset = 4 * 4;
@@ -222,6 +168,37 @@ const fullScreenQuadArray = new Float32Array([
     -1, 1, 0.5, 1, 0, 1,
 ]);
 
+
+// let T = mat4.create();
+// T[5] = 0;
+// T[6] = 1;
+// T[9] = 1;
+// T[10] = 0;
+const T = mat4.create();
+function R2L(M) {
+    // mat4.copy(T, M);
+    // M[1] = T[2];
+    // M[2] = T[1];
+
+    // M[4] = T[8];
+    // M[5] = T[10];
+    // M[6] = T[9];
+
+    // M[8] = T[4];
+    // M[9] = T[6];
+    // M[10] = T[5];
+
+    // M[13] = T[14];
+    // M[14] = T[13];
+
+    mat4.set(M, 
+        M[0], M[2], M[1], M[3],
+        M[8], M[10], M[9], M[11],
+        M[4], M[6], M[5], M[7],
+        M[12], M[14], M[13], M[15],
+    );
+}
+
 let modelMatrix1 = mat4.create();
 // mat4.scale(modelMatrix1, modelMatrix1, vec3.fromValues(0.1, 0.1, 0.1));
 // mat4.translate(modelMatrix1, modelMatrix1, vec3.fromValues(-2, 0, 0));
@@ -231,8 +208,14 @@ mat4.translate(modelMatrix1, modelMatrix1, vec3.fromValues(0, 0, 0));
 let modelViewMatrix1 = mat4.create();
 // let modelViewProjectionMatrix2 = mat4.create();
 let viewMatrix = mat4.create();
-// mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -7));
-mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -50));
+const offsety = 0.5;
+mat4.lookAt(viewMatrix, vec3.fromValues(0,offsety,1), vec3.fromValues(0, offsety, 0), vec3.fromValues(0, 1, 0));
+// mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -2));
+// mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -50));
+// mat4.scale(viewMatrix, viewMatrix, vec3.fromValues(1, -1, 1));
+
+// R2L(modelMatrix1);
+// R2L(viewMatrix);
 
 let projectionMatrix = mat4.create();
 
@@ -270,7 +253,14 @@ export default class DeferredRenderer {
 
         const aspect = Math.abs(canvas.width / canvas.height);
         // let projectionMatrix = mat4.create();
-        mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 1, 1000.0);
+        mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 0.1, 100.0);
+        mat4.scale(projectionMatrix, projectionMatrix, vec3.fromValues(1, -1, 1));
+        // projectionMatrix[8] = -projectionMatrix[8];
+        // projectionMatrix[9] = -projectionMatrix[9];
+        // projectionMatrix[10] = -projectionMatrix[10];
+        // projectionMatrix[11] = -projectionMatrix[11];
+        // mat4.multiply(projectionMatrix, T, projectionMatrix);
+        // R2L(projectionMatrix);
 
         const context = canvas.getContext('gpupresent');
 
@@ -349,7 +339,7 @@ export default class DeferredRenderer {
             vertexInput: this.sponza.vertexInput,
 
             rasterizationState: {
-                frontFace: 'ccw',
+                frontFace: 'cw',
                 cullMode: 'back',
             },
 
@@ -527,15 +517,11 @@ export default class DeferredRenderer {
     }
 
     async setupScene() {
-        // OBJ.downloadMeshes({
-        //     'sponza': 'models/sponza.obj',
-        // }, (meshes) => {
-        //     console.log(meshes);
-        // });
 
         return new Promise((resolve) => {
             OBJ.downloadMeshes({
-                'sponza': 'models/sponza.obj'
+                // 'sponza': 'models/sponza.obj'
+                'sponza': 'models/di.obj'
             }, resolve);
         }).then((meshes) => {
             this.meshes = meshes;
@@ -546,160 +532,30 @@ export default class DeferredRenderer {
 
         });
 
-        // const g = this.sponza = new Geometry(this.device);
-        // g.fromData(
-        //     new Float32Array([
-        //             // float position
-        //             1, -1, 1,
-        //             -1, -1, 1,
-        //             -1, -1, -1,
-        //             1, -1, -1,
-        //             1, -1, 1,
-        //             -1, -1, -1,
-
-        //             1, 1, 1,
-        //             1, -1, 1,
-        //             1, -1, -1,
-        //             1, 1, -1,
-        //             1, 1, 1,
-        //             1, -1, -1,
-
-        //             -1, 1, 1,
-        //             1, 1, 1,
-        //             1, 1, -1,
-        //             -1, 1, -1,
-        //             -1, 1, 1,
-        //             1, 1, -1,
-
-        //             -1, -1, 1,
-        //             -1, 1, 1,
-        //             -1, 1, -1,
-        //             -1, -1, -1,
-        //             -1, -1, 1,
-        //             -1, 1, -1,
-
-        //             1, 1, 1,
-        //             -1, 1, 1,
-        //             -1, -1, 1,
-        //             -1, -1, 1,
-        //             1, -1, 1,
-        //             1, 1, 1,
-
-        //             1, -1, -1,
-        //             -1, -1, -1,
-        //             -1, 1, -1,
-        //             1, 1, -1,
-        //             1, -1, -1,
-        //             -1, 1, -1,
-        //     ]),
-        //     new Float32Array([
-        //             // float normal
-        //             0, -1, 0,
-        //             0, -1, 0,
-        //             0, -1, 0,
-        //             0, -1, 0,
-        //             0, -1, 0,
-        //             0, -1, 0,
-
-        //             1, 0, 0,
-        //             1, 0, 0,
-        //             1, 0, 0,
-        //             1, 0, 0,
-        //             1, 0, 0,
-        //             1, 0, 0,
-
-        //             0, 1, 0,
-        //             0, 1, 0,
-        //             0, 1, 0,
-        //             0, 1, 0,
-        //             0, 1, 0,
-        //             0, 1, 0,
-
-        //             -1, 0, 0,
-        //             -1, 0, 0,
-        //             -1, 0, 0,
-        //             -1, 0, 0,
-        //             -1, 0, 0,
-        //             -1, 0, 0,
-        //             -1, 0, 0,
-
-        //             0, 0, 1,
-        //             0, 0, 1,
-        //             0, 0, 1,
-        //             0, 0, 1,
-        //             0, 0, 1,
-        //             0, 0, 1,
-
-        //             0, 0, -1,
-        //             0, 0, -1,
-        //             0, 0, -1,
-        //             0, 0, -1,
-        //             0, 0, -1,
-        //             0, 0, -1,
-        //     ]),
-        //     new Float32Array([
-        //             // float2 uv,
-        //             1, 1,
-        //             0, 1,
-        //             0, 0,
-        //             1, 0,
-        //             1, 1,
-        //             0, 0,
-
-        //             1, 1,
-        //             0, 1,
-        //             0, 0,
-        //             1, 0,
-        //             1, 1,
-        //             0, 0,
-
-        //             1, 1,
-        //             0, 1,
-        //             0, 0,
-        //             1, 0,
-        //             1, 1,
-        //             0, 0,
-
-        //             1, 1,
-        //             0, 1,
-        //             0, 0,
-        //             1, 0,
-        //             1, 1,
-        //             0, 0,
-
-        //             1, 1,
-        //             0, 1,
-        //             0, 0,
-        //             1, 0,
-        //             1, 1,
-        //             0, 0,
-
-        //             1, 1,
-        //             0, 1,
-        //             0, 0,
-        //             1, 0,
-        //             1, 1,
-        //             0, 0,
-        //     ]),
-        //     new Uint32Array([
-        //             0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
-        //             21,22,23,24,25,26,27,28,29,30,
-        //             31,32,33,34,35
-        //     ]),
-
-        // );
     }
 
     updateTransformationMatrix() {
         let now = Date.now() / 1000;
 
+        // mat4.copy(tmpMat41, modelMatrix1);
         mat4.rotate(tmpMat41, modelMatrix1, now, vec3.fromValues(0, 1, 0));
+
         // mat4.rotate(tmpMat41, modelMatrix1, 1, vec3.fromValues(Math.sin(now), Math.cos(now), 0));
         // mat4.rotate(tmpMat42, modelMatrix2, 1, vec3.fromValues(Math.cos(now), Math.sin(now), 0));
 
         mat4.multiply(modelViewMatrix1, viewMatrix, tmpMat41);
         mat4.invert(tmpMat41, modelViewMatrix1);
-        mat4.transpose(tmpMat41, tmpMat41);
+        mat4.transpose(tmpMat41, tmpMat41); //normal matrix
+
+
+        // R2L(modelViewMatrix1);
+        // R2L(tmpMat41);
+
+
+        // mat4.multiply(modelViewMatrix1, T, modelViewMatrix1);
+        // mat4.multiply(tmpMat41, T, tmpMat41);
+
+
         // mat4.multiply(modelViewProjectionMatrix1, projectionMatrix, modelViewProjectionMatrix1);
         // mat4.multiply(modelViewProjectionMatrix2, viewMatrix, tmpMat42);
         // mat4.multiply(modelViewProjectionMatrix2, projectionMatrix, modelViewProjectionMatrix2);
