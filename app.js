@@ -1,4 +1,5 @@
 import DeferredRenderer from './renderer/DeferredRenderer.js';
+// import DeferredRenderer from './renderer/TestRT.js';
 
 (async function () {
 const canvas = document.querySelector('canvas');
