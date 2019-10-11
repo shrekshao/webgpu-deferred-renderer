@@ -55,15 +55,11 @@ void main() {
     // gl_Position = vec4( clamp(position.xy, vec2(-0.5, -0.8), vec2(1, 1)), 0.5, 1);
 }
 `;
-const vertexShaderGBufferGLSL = vertexShaderBlinnPhongGLSL;
 
 const fragmentShaderGBufferGLSL = `#version 450
-layout(set = 0, binding = 1) uniform sampler defaultSampler;
-layout(set = 0, binding = 2) uniform texture2D albedoMap;
-
-layout(location = 0) in vec4 fragPosition;
-layout(location = 1) in vec4 fragNormal;
-layout(location = 2) in vec2 fragUV;
+layout(location = 0) out vec4 fragPosition;
+layout(location = 1) out vec4 fragNormal;
+layout(location = 2) out vec2 fragUV;
 
 layout(location = 0) out vec4 outGBufferPosition;
 layout(location = 1) out vec4 outGBufferNormal;
@@ -71,8 +67,8 @@ layout(location = 2) out vec4 outGBufferAlbedo;
 
 void main() {
     outGBufferPosition = fragPosition;
-    outGBufferNormal = fragNormal;  // TODO: normal map
-    outGBufferAlbedo = texture(sampler2D(albedoMap, defaultSampler), fragUV);
+    outGBufferNormal = fragNormal;
+    outGBufferAlbedo = vec4(fragUV, 0, 1);  // temp
 }
 `;
 
@@ -121,79 +117,6 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     outColor = texture(sampler2D(quadTexture, quadSampler), fragUV);
-    // outColor = vec4(texture(sampler2D(quadTexture, quadSampler), fragUV).r, 0.0, 0.0, 1.0);
-}
-`;
-
-const fragmentShaderGBufferDebugViewGLSL = `#version 450
-
-#define NUM_GBUFFERS 3
-#define POSITION_ID 0
-#define NORMAL_ID 1
-#define ALBEDOMAP_ID 2
-
-
-#define A 3.0
-#define B 0.5
-
-layout(set = 0, binding = 0) uniform sampler quadSampler;
-// layout(set = 0, binding = 1) uniform texture2D gbufferTexture[NUM_GBUFFERS];
-layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
-layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
-layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
-
-layout(location = 0) in vec2 fragUV;
-layout(location = 0) out vec4 outColor;
-
-void main() {
-
-    // fragUV.y > A * (fragUV.x - i / NUM_GBUFFERS) + B
-
-    float r = float(NUM_GBUFFERS) / A * (A * fragUV.x - fragUV.y + B);
-    if (r < 0) {
-        outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    } else if (r < 1) {
-        outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
-    } else if (r < 2) {
-        outColor = texture(sampler2D(gbufferTexture1, quadSampler), fragUV);
-    } else if (r < 3) {
-        outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    } else {
-        outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
-    }
-
-
-    // if () {
-    // } else if (fragUV.y > A * (fragUV.x - 1.0 / NUM_GBUFFERS) + B ) {
-    //     outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
-    // } else if (fragUV.y > A * (fragUV.x - 2.0 / NUM_GBUFFERS) + B) {
-    //     outColor = texture(sampler2D(gbufferTexture1, quadSampler), fragUV);
-    // } else if (fragUV.y > A * (fragUV.x - 3.0 / NUM_GBUFFERS) + B) {
-    //     outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    // } else {
-    // }
-    
-
-
-    // float step = 1.0 / NUM_GBUFFERS;
-    // for (int i = 0; i < NUM_GBUFFERS; i++) {
-    //     float(i) * step
-    // }
-
-    // int i = 0;
-    // if (fragUV.y > A * (fragUV.x - 1.0 / NUM_GBUFFERS) + B ) {
-    //     i = 0;
-    // } else if (fragUV.y > A * (fragUV.x - 2.0 / NUM_GBUFFERS) + B) {
-    //     i = 1;
-    // } else if (fragUV.y > A * (fragUV.x - 2.0 / NUM_GBUFFERS) + B) {
-    //     i = 2;
-    // }
-    // outColor = texture(sampler2D(gbufferTexture[i], quadSampler), fragUV);
-
-    // vec4 position = texture(sampler2D(gbufferTexture[POSITION_ID], quadSampler), fragUV);
-    // vec4 normal = texture(sampler2D(gbufferTexture[NORMAL_ID], quadSampler), fragUV);
-
-    // outColor = texture(sampler2D(quadTexture, quadSampler), fragUV);
     // outColor = vec4(texture(sampler2D(quadTexture, quadSampler), fragUV).r, 0.0, 0.0, 1.0);
 }
 `;
@@ -445,18 +368,6 @@ export default class DeferredRenderer {
                     type: "sampled-texture",
                     textureComponentType: "float"
                 },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    type: "sampled-texture",
-                    textureComponentType: "float"
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    type: "sampled-texture",
-                    textureComponentType: "float"
-                },
             ]
         });
 
@@ -468,14 +379,13 @@ export default class DeferredRenderer {
 
             vertexStage: {
                 module: device.createShaderModule({
-                    code: glslang.compileGLSL(vertexShaderGBufferGLSL, "vertex"),
+                    code: glslang.compileGLSL(vertexShaderBlinnPhongGLSL, "vertex"),
                 }),
                 entryPoint: "main"
             },
             fragmentStage: {
                 module: device.createShaderModule({
-                    // code: glslang.compileGLSL(fragmentShaderBlinnPhongGLSL, "fragment"),
-                    code: glslang.compileGLSL(fragmentShaderGBufferGLSL, "fragment"),
+                    code: glslang.compileGLSL(fragmentShaderBlinnPhongGLSL, "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -495,23 +405,11 @@ export default class DeferredRenderer {
                 cullMode: 'back',
             },
 
-            colorStates: [
-                {
-                    format: "bgra8unorm",
-                    alphaBlend: {},
-                    colorBlend: {},
-                },
-                {
-                    format: "bgra8unorm",
-                    alphaBlend: {},
-                    colorBlend: {},
-                },
-                {
-                    format: "bgra8unorm",
-                    alphaBlend: {},
-                    colorBlend: {},
-                },
-            ],
+            colorStates: [{
+                format: "bgra8unorm",
+                alphaBlend: {},
+                colorBlend: {},
+            }],
         });
 
         const quadPipeLineLayout = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout] });
@@ -526,8 +424,7 @@ export default class DeferredRenderer {
             },
             fragmentStage: {
                 module: device.createShaderModule({
-                    // code: glslang.compileGLSL(fragmentShaderFullScreenQuadGLSL, "fragment"),
-                    code: glslang.compileGLSL(fragmentShaderGBufferDebugViewGLSL, "fragment"),
+                    code: glslang.compileGLSL(fragmentShaderFullScreenQuadGLSL, "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -586,121 +483,27 @@ export default class DeferredRenderer {
             // usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.SAMPLED
         });
 
-        // const rttTexture = this.rttTexture = device.createTexture({
-        //     size: {
-        //         width: canvas.width,
-        //         height: canvas.height,
-        //         depth: 1
-        //     },
-        //     arrayLayerCount: 1,
-        //     mipLevelCount: 1,
-        //     sampleCount: 1,
-        //     dimension: "2d",
-        //     format: "bgra8unorm",
-        //     usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
-        // });
-
-
-        // 10-11-2019 Unfortunately 
-        // Currently Dawn does not support layered rendering.
-        // https://cs.chromium.org/chromium/src/third_party/dawn/src/dawn_native/CommandEncoder.cpp?l=264
-        // Sample from depth is not supported
-
-
-        // this.gbufferTextures = device.createTexture({
-        //     size: {
-        //         width: canvas.width,
-        //         height: canvas.height,
-        //         depth: 1
-        //     },
-        //     arrayLayerCount: 3,     // Gbuffer count
-        //     mipLevelCount: 1,
-        //     sampleCount: 1,
-        //     dimension: "2d",
-        //     format: "bgra8unorm",
-        //     usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
-        // });
-
-        // // Loop
-        // const colorAttachment0 = this.gbufferTextures.createView({
-        //     dimension: "2d-array",
-        //     baseArrayLayer: 0,
-        //     arrayLayerCount: 1
-        // });
-        // const colorAttachment1 = this.gbufferTextures.createView({
-        //     dimension: "2d-array",
-        //     baseArrayLayer: 1,
-        //     arrayLayerCount: 1
-        // });
-        // const colorAttachment2 = this.gbufferTextures.createView({
-        //     dimension: "2d-array",
-        //     baseArrayLayer: 2,
-        //     arrayLayerCount: 1
-        // });
-
-        this.gbufferTextures = [
-            device.createTexture({
-                size: {
-                    width: canvas.width,
-                    height: canvas.height,
-                    depth: 1
-                },
-                arrayLayerCount: 1,
-                mipLevelCount: 1,
-                sampleCount: 1,
-                dimension: "2d",
-                format: "bgra8unorm",
-                usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
-            }),
-            device.createTexture({
-                size: {
-                    width: canvas.width,
-                    height: canvas.height,
-                    depth: 1
-                },
-                arrayLayerCount: 1,
-                mipLevelCount: 1,
-                sampleCount: 1,
-                dimension: "2d",
-                format: "bgra8unorm",
-                usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
-            }),
-            device.createTexture({
-                size: {
-                    width: canvas.width,
-                    height: canvas.height,
-                    depth: 1
-                },
-                arrayLayerCount: 1,
-                mipLevelCount: 1,
-                sampleCount: 1,
-                dimension: "2d",
-                format: "bgra8unorm",
-                usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
-            }),
-        ];
-
+        const rttTexture = this.rttTexture = device.createTexture({
+            size: {
+                width: canvas.width,
+                height: canvas.height,
+                depth: 1
+            },
+            arrayLayerCount: 1,
+            mipLevelCount: 1,
+            sampleCount: 1,
+            dimension: "2d",
+            format: "bgra8unorm",
+            usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
+        });
 
         // const renderPassDescriptor = {
         this.renderPassDescriptor = {
-            colorAttachments: [
-                {
-                    // attachment: colorAttachment0,
-                    attachment: this.gbufferTextures[0].createView(),
-                    loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-                    storeOp: "store",
-                },
-                {
-                    attachment: this.gbufferTextures[1].createView(),
-                    loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-                    storeOp: "store",
-                },
-                {
-                    attachment: this.gbufferTextures[2].createView(),
-                    loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-                    storeOp: "store",
-                },
-            ],
+            colorAttachments: [{
+                // attachment is acquired in render loop.
+                loadValue: { r: 0.5, g: 0.5, b: 0.5, a: 1.0 },
+                storeOp: "store",
+            }],
             depthStencilAttachment: {
                 attachment: depthTexture.createView(),
 
@@ -713,7 +516,7 @@ export default class DeferredRenderer {
 
         this.renderFullScreenPassDescriptor = {
             colorAttachments: [{
-                loadValue: {r: 0.0, g: 0.0, b: 0.0, a: 1.0},
+                loadValue: {r: 0.0, g: 0.5, b: 0.0, a: 1.0},
                 storeOp: "store",
             }],
         };
@@ -776,30 +579,17 @@ export default class DeferredRenderer {
 
         
 
-        this.quadUniformBindGroup = this.device.createBindGroup({
+        const quadUniformBindGroup = this.quadUniformBindGroup = this.device.createBindGroup({
             layout: this.quadUniformsBindGroupLayout,
             bindings: [
                 {
                     binding: 0,
                     resource: sampler,
                 },
-                // {
-                //     binding: 1,
-                //     // resource: this.rttTexture.createView()
-                //     resource: this.gbufferTextures.createView()
-                // },
                 {
                     binding: 1,
-                    resource: this.gbufferTextures[0].createView()
-                },
-                {
-                    binding: 2,
-                    resource: this.gbufferTextures[1].createView()
-                },
-                {
-                    binding: 3,
-                    resource: this.gbufferTextures[2].createView()
-                },
+                    resource: this.rttTexture.createView()
+                }
             ]
         });
     }
@@ -822,11 +612,9 @@ export default class DeferredRenderer {
 
         // const modelUrl = 'models/sponza.obj';
         // const albedoUrl = 'models/color.jpg';
-        // const normalUrl = 'models/normal.png';
 
         const modelUrl = 'models/di.obj';
         const albedoUrl = 'models/di.png';
-        const normalUrl = null;
 
         const pModel = new Promise((resolve) => {
             OBJ.downloadMeshes({
@@ -834,11 +622,9 @@ export default class DeferredRenderer {
             }, resolve);
         });
 
-        const pAlbedoMap = createTextureFromImage(this.device, albedoUrl, GPUTextureUsage.SAMPLED);
+        const pColorTexture = createTextureFromImage(this.device, albedoUrl, GPUTextureUsage.SAMPLED);
 
-        const pNormalMap = normalUrl ? createTextureFromImage(this.device, normalUrl, GPUTextureUsage.SAMPLED) : null;
-
-        await Promise.all([pModel, pAlbedoMap, pNormalMap]).then((values) => {
+        await Promise.all([pModel, pColorTexture]).then((values) => {
             this.meshes = values[0];
 
             // build mesh, drawable list here
@@ -846,10 +632,7 @@ export default class DeferredRenderer {
             geometry.fromObjMesh(this.meshes['obj']);
 
             const albedoMap = this.albedoMap = values[1];
-            // console.log(albedoMap);
-
-            const normalMap = this.normalMap = values[2];
-            console.log('normalmap: ', normalMap);
+            console.log(albedoMap);
         });
     }
 
@@ -886,7 +669,9 @@ export default class DeferredRenderer {
         this.updateTransformationMatrix();
 
         // this.renderPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
-        // this.renderPassDescriptor.colorAttachments[0].attachment = this.rttTexture.createView();
+        this.renderPassDescriptor.colorAttachments[0].attachment = this.rttTexture.createView();
+        // this.renderPassDescriptor.depthStencilAttachment = this.fullScreenQuadTexture.createView();
+        // this.renderPassDescriptor.depthStencilAttachment = this.depthTexture.createView();
 
         const commandEncoder = this.device.createCommandEncoder({});
 
