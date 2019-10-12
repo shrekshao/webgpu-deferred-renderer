@@ -60,6 +60,7 @@ const vertexShaderGBufferGLSL = vertexShaderBlinnPhongGLSL;
 const fragmentShaderGBufferGLSL = `#version 450
 layout(set = 0, binding = 1) uniform sampler defaultSampler;
 layout(set = 0, binding = 2) uniform texture2D albedoMap;
+layout(set = 0, binding = 3) uniform texture2D normalMap;
 
 layout(location = 0) in vec4 fragPosition;
 layout(location = 1) in vec4 fragNormal;
@@ -69,9 +70,18 @@ layout(location = 0) out vec4 outGBufferPosition;
 layout(location = 1) out vec4 outGBufferNormal;
 layout(location = 2) out vec4 outGBufferAlbedo;
 
+vec3 applyNormalMap(vec3 geomnor, vec3 normap) {
+    normap = normap * 2.0 - 1.0;
+    vec3 up = normalize(vec3(0.001, 1, 0.001));
+    vec3 surftan = normalize(cross(geomnor, up));
+    vec3 surfbinor = cross(geomnor, surftan);
+    return normap.y * surftan + normap.x * surfbinor + normap.z * geomnor;
+}
+
 void main() {
     outGBufferPosition = fragPosition;
-    outGBufferNormal = fragNormal;  // TODO: normal map
+    // outGBufferNormal = fragNormal;  // TODO: normal map
+    outGBufferNormal = vec4(applyNormalMap(fragNormal.xyz, texture(sampler2D(normalMap, defaultSampler), fragUV).rgb), 1);
     outGBufferAlbedo = texture(sampler2D(albedoMap, defaultSampler), fragUV);
 }
 `;
@@ -439,7 +449,13 @@ export default class DeferredRenderer {
                     visibility: GPUShaderStage.FRAGMENT,
                     type: "sampled-texture",
                     textureComponentType: "float"
-                }
+                },
+                {
+                    binding: 3,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    type: "sampled-texture",
+                    textureComponentType: "float"
+                },
             ]
         });
         
@@ -772,13 +788,19 @@ export default class DeferredRenderer {
                         // size: matrixSize
                         size: uniformBufferSize
                     }
-                }, {
+                },
+                {
                     binding: 1,
                     resource: samplerRepeat,
-                }, {
+                },
+                {
                     binding: 2,
                     resource: this.albedoMap.createView(),
-                }
+                },
+                {
+                    binding: 3,
+                    resource: this.normalMap.createView(),
+                },
             ],
         });
 
