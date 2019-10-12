@@ -5,7 +5,7 @@ export default class Geometry {
 
     fromObjMesh(mesh) {
         // mesh is from webgl-obj-loader
-        console.log(mesh);
+        // console.log(mesh);
 
         // mesh.indices;
         // mesh.vertices;

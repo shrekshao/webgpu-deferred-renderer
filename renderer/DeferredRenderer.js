@@ -142,6 +142,11 @@ layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
 layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
 layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
 
+layout(set = 1, binding = 0) uniform Uniforms {
+    float debugViewOffset;
+    vec3 padding;
+} uniforms;
+
 layout(location = 0) in vec2 fragUV;
 layout(location = 0) out vec4 outColor;
 
@@ -149,17 +154,21 @@ void main() {
 
     // fragUV.y > A * (fragUV.x - i / NUM_GBUFFERS) + B
 
-    float r = float(NUM_GBUFFERS) / A * (A * fragUV.x - fragUV.y + B);
-    if (r < 0) {
-        outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    } else if (r < 1) {
+    float o = uniforms.debugViewOffset;
+    // float o = 0.0;
+
+    float r = mod( o + float(NUM_GBUFFERS) / A * (A * fragUV.x - fragUV.y + B), NUM_GBUFFERS);
+    if (r < 1)
+    {
         outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
-    } else if (r < 2) {
+    }
+    else if (r < 2)
+    {
         outColor = texture(sampler2D(gbufferTexture1, quadSampler), fragUV);
-    } else if (r < 3) {
+    }
+    else if (r < 3)
+    {
         outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    } else {
-        outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
     }
 
 
@@ -353,6 +362,8 @@ export default class DeferredRenderer {
     constructor(canvas) {
         this.canvas = canvas;
         this.drawables = [];
+
+        this.debugViewOffset = 0.5;
     }
 
     // draw() {
@@ -460,6 +471,16 @@ export default class DeferredRenderer {
             ]
         });
 
+        const debugViewBindGroupLayout = this.debugViewsBindGroupLayout = device.createBindGroupLayout({
+            bindings: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    type: "uniform-buffer"
+                },
+            ]
+        });
+
 
         /* Render Pipeline */
         const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [uniformsBindGroupLayout] });
@@ -514,7 +535,7 @@ export default class DeferredRenderer {
             ],
         });
 
-        const quadPipeLineLayout = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout] });
+        const quadPipeLineLayout = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout, debugViewBindGroupLayout] });
         const quadPipeline = this.quadPipeline = device.createRenderPipeline({
             layout: quadPipeLineLayout,
 
@@ -761,6 +782,8 @@ export default class DeferredRenderer {
             ],
         });
 
+        
+
         // // const uniformBindGroup2 = device.createBindGroup({
         // this.uniformBindGroup2 = device.createBindGroup({
         //     layout: uniformsBindGroupLayout,
@@ -802,6 +825,27 @@ export default class DeferredRenderer {
                 },
             ]
         });
+
+        // const debugViewUniformBufferSize = 4;
+        const debugViewUniformBufferSize = 16;
+        const debugViewUniformBuffer = this.debugViewUniformBuffer = this.device.createBuffer({
+            size: debugViewUniformBufferSize,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        this.debugViewUniformBindGroup = this.device.createBindGroup({
+            layout: this.debugViewsBindGroupLayout,
+            bindings: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: debugViewUniformBuffer,
+                        offset: 0,
+                        size: debugViewUniformBufferSize
+                    }
+                }
+            ]
+        });
     }
 
     async setupScene() {
@@ -820,13 +864,13 @@ export default class DeferredRenderer {
 
         // });
 
-        // const modelUrl = 'models/sponza.obj';
-        // const albedoUrl = 'models/color.jpg';
-        // const normalUrl = 'models/normal.png';
+        const modelUrl = 'models/sponza.obj';
+        const albedoUrl = 'models/color.jpg';
+        const normalUrl = 'models/normal.png';
 
-        const modelUrl = 'models/di.obj';
-        const albedoUrl = 'models/di.png';
-        const normalUrl = null;
+        // const modelUrl = 'models/di.obj';
+        // const albedoUrl = 'models/di.png';
+        // const normalUrl = null;
 
         const pModel = new Promise((resolve) => {
             OBJ.downloadMeshes({
@@ -849,7 +893,7 @@ export default class DeferredRenderer {
             // console.log(albedoMap);
 
             const normalMap = this.normalMap = values[2];
-            console.log('normalmap: ', normalMap);
+            // console.log('normalmap: ', normalMap);
         });
     }
 
@@ -939,13 +983,16 @@ export default class DeferredRenderer {
 
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
-        
+        this.debugViewUniformBuffer.setSubData(0, new Float32Array([this.debugViewOffset]));
+        // this.debugViewUniformBuffer.setSubData(0, new Float32Array([this.debugViewOffset, 0, 0, 0]));
+        // this.debugViewUniformBuffer.setSubData(0, new Float32Array([0.5, 0, 0, 0]));
 
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
         quadPassEncoder.setPipeline(this.quadPipeline);
         quadPassEncoder.setVertexBuffers(0, [this.quadVerticesBuffer], [0]);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+        quadPassEncoder.setBindGroup(1, this.debugViewUniformBindGroup);
         quadPassEncoder.draw(6, 1, 0, 0);
         quadPassEncoder.endPass();
 
