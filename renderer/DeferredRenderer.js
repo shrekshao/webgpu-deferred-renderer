@@ -2,32 +2,7 @@
 // import glmatrix from '../third_party/gl-matrix-min.js';
 
 import Geometry from './Geometry.js';
-
-
-const vertexShaderGLSL = `#version 450
-layout(set = 0, binding = 0) uniform Uniforms {
-mat4 modelViewProjectionMatrix;
-} uniforms;
-
-layout(location = 0) in vec4 position;
-layout(location = 1) in vec4 color;
-
-layout(location = 0) out vec4 fragColor;
-
-void main() {
-gl_Position = uniforms.modelViewProjectionMatrix * position;
-fragColor = color;
-}
-`;
-
-const fragmentShaderGLSL = `#version 450
-layout(location = 0) in vec4 fragColor;
-layout(location = 0) out vec4 outColor;
-
-void main() {
-outColor = fragColor;
-}
-`;
+import Camera from './Camera.js';
 
 
 const vertexShaderBlinnPhongGLSL = `#version 450
@@ -181,24 +156,6 @@ void main() {
         outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
     }
 
-
-    // if () {
-    // } else if (fragUV.y > A * (fragUV.x - 1.0 / NUM_GBUFFERS) + B ) {
-    //     outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
-    // } else if (fragUV.y > A * (fragUV.x - 2.0 / NUM_GBUFFERS) + B) {
-    //     outColor = texture(sampler2D(gbufferTexture1, quadSampler), fragUV);
-    // } else if (fragUV.y > A * (fragUV.x - 3.0 / NUM_GBUFFERS) + B) {
-    //     outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    // } else {
-    // }
-    
-
-
-    // float step = 1.0 / NUM_GBUFFERS;
-    // for (int i = 0; i < NUM_GBUFFERS; i++) {
-    //     float(i) * step
-    // }
-
     // int i = 0;
     // if (fragUV.y > A * (fragUV.x - 1.0 / NUM_GBUFFERS) + B ) {
     //     i = 0;
@@ -314,55 +271,39 @@ const fullScreenQuadArray = new Float32Array([
 ]);
 
 
-// let T = mat4.create();
-// T[5] = 0;
-// T[6] = 1;
-// T[9] = 1;
-// T[10] = 0;
-const T = mat4.create();
-function R2L(M) {
-    // mat4.copy(T, M);
-    // M[1] = T[2];
-    // M[2] = T[1];
+// // let T = mat4.create();
+// // T[5] = 0;
+// // T[6] = 1;
+// // T[9] = 1;
+// // T[10] = 0;
+// const T = mat4.create();
+// function R2L(M) {
+//     // mat4.copy(T, M);
+//     // M[1] = T[2];
+//     // M[2] = T[1];
 
-    // M[4] = T[8];
-    // M[5] = T[10];
-    // M[6] = T[9];
+//     // M[4] = T[8];
+//     // M[5] = T[10];
+//     // M[6] = T[9];
 
-    // M[8] = T[4];
-    // M[9] = T[6];
-    // M[10] = T[5];
+//     // M[8] = T[4];
+//     // M[9] = T[6];
+//     // M[10] = T[5];
 
-    // M[13] = T[14];
-    // M[14] = T[13];
+//     // M[13] = T[14];
+//     // M[14] = T[13];
 
-    mat4.set(M, 
-        M[0], M[2], M[1], M[3],
-        M[8], M[10], M[9], M[11],
-        M[4], M[6], M[5], M[7],
-        M[12], M[14], M[13], M[15],
-    );
-}
+//     mat4.set(M, 
+//         M[0], M[2], M[1], M[3],
+//         M[8], M[10], M[9], M[11],
+//         M[4], M[6], M[5], M[7],
+//         M[12], M[14], M[13], M[15],
+//     );
+// }
 
 let modelMatrix1 = mat4.create();
-// mat4.scale(modelMatrix1, modelMatrix1, vec3.fromValues(0.1, 0.1, 0.1));
-// mat4.translate(modelMatrix1, modelMatrix1, vec3.fromValues(-2, 0, 0));
 mat4.translate(modelMatrix1, modelMatrix1, vec3.fromValues(0, 0, 0));
-// let modelMatrix2 = mat4.create();
-// mat4.translate(modelMatrix2, modelMatrix2, vec3.fromValues(2, 0, 0));
 let modelViewMatrix1 = mat4.create();
-// let modelViewProjectionMatrix2 = mat4.create();
-let viewMatrix = mat4.create();
-const offsety = 0.5;
-mat4.lookAt(viewMatrix, vec3.fromValues(0,offsety,1), vec3.fromValues(0, offsety, 0), vec3.fromValues(0, 1, 0));
-// mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -2));
-// mat4.translate(viewMatrix, viewMatrix, vec3.fromValues(0, 0, -50));
-// mat4.scale(viewMatrix, viewMatrix, vec3.fromValues(1, -1, 1));
-
-// R2L(modelMatrix1);
-// R2L(viewMatrix);
-
-let projectionMatrix = mat4.create();
 
 let tmpMat41 = mat4.create();
 let tmpMat42 = mat4.create();
@@ -371,9 +312,14 @@ let tmpMat42 = mat4.create();
 export default class DeferredRenderer {
     constructor(canvas) {
         this.canvas = canvas;
-        this.drawables = [];
+        // this.drawables = [];
 
+        this.drawableLists = [];    // {renderpass: GPURenderPass, drawables: []}
+
+        // dat.gui controls
         this.debugViewOffset = 0.5;
+
+        this.camera = new Camera(canvas);
     }
 
     // draw() {
@@ -397,18 +343,6 @@ export default class DeferredRenderer {
 
         // const canvas = document.querySelector('canvas');
         const canvas = this.canvas;
-
-        const aspect = Math.abs(canvas.width / canvas.height);
-        // let projectionMatrix = mat4.create();
-        mat4.perspective(projectionMatrix, (2 * Math.PI) / 5, aspect, 0.1, 100.0);
-        mat4.scale(projectionMatrix, projectionMatrix, vec3.fromValues(1, -1, 1));
-        // projectionMatrix[8] = -projectionMatrix[8];
-        // projectionMatrix[9] = -projectionMatrix[9];
-        // projectionMatrix[10] = -projectionMatrix[10];
-        // projectionMatrix[11] = -projectionMatrix[11];
-        // mat4.multiply(projectionMatrix, T, projectionMatrix);
-        // R2L(projectionMatrix);
-
         const context = canvas.getContext('gpupresent');
 
         // const swapChain = context.configureSwapChain({
@@ -623,20 +557,6 @@ export default class DeferredRenderer {
             // usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.SAMPLED
         });
 
-        // const rttTexture = this.rttTexture = device.createTexture({
-        //     size: {
-        //         width: canvas.width,
-        //         height: canvas.height,
-        //         depth: 1
-        //     },
-        //     arrayLayerCount: 1,
-        //     mipLevelCount: 1,
-        //     sampleCount: 1,
-        //     dimension: "2d",
-        //     format: "bgra8unorm",
-        //     usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
-        // });
-
 
         // 10-11-2019 Unfortunately 
         // Currently Dawn does not support layered rendering.
@@ -769,7 +689,8 @@ export default class DeferredRenderer {
             addressModeU: "repeat",
             addressModeV: "repeat",
             magFilter: "linear",
-            minFilter: "linear"
+            minFilter: "linear",
+            mipmapFilter: "linear"
         });
 
         const sampler = this.sampler = device.createSampler({
@@ -920,15 +841,14 @@ export default class DeferredRenderer {
     }
 
     updateTransformationMatrix() {
-        let now = Date.now() / 1000;
+        // let now = Date.now() / 1000;
 
         // mat4.copy(tmpMat41, modelMatrix1);
-        mat4.rotate(tmpMat41, modelMatrix1, now, vec3.fromValues(0, 1, 0));
+        // mat4.rotate(tmpMat41, modelMatrix1, now, vec3.fromValues(0, 1, 0));
 
-        // mat4.rotate(tmpMat41, modelMatrix1, 1, vec3.fromValues(Math.sin(now), Math.cos(now), 0));
-        // mat4.rotate(tmpMat42, modelMatrix2, 1, vec3.fromValues(Math.cos(now), Math.sin(now), 0));
 
-        mat4.multiply(modelViewMatrix1, viewMatrix, tmpMat41);
+        mat4.multiply(modelViewMatrix1, this.camera.viewMatrix, modelMatrix1);
+    
         mat4.invert(tmpMat41, modelViewMatrix1);
         mat4.transpose(tmpMat41, tmpMat41); //normal matrix
 
@@ -957,18 +877,20 @@ export default class DeferredRenderer {
         const commandEncoder = this.device.createCommandEncoder({});
 
         this.uniformBuffer.setSubData(0, modelViewMatrix1);
-        this.uniformBuffer.setSubData(64, projectionMatrix);
+        this.uniformBuffer.setSubData(64, this.camera.projectionMatrix);
         this.uniformBuffer.setSubData(128, tmpMat41);
         // this.uniformBuffer.setSubData(offset, modelViewProjectionMatrix2);
         // this.uniformBuffer.setSubData(256, modelViewProjectionMatrix2);
         const passEncoder = commandEncoder.beginRenderPass(this.renderPassDescriptor);
         passEncoder.setPipeline(this.pipeline);
-        // passEncoder.setVertexBuffers(0, [this.verticesBuffer], [0]);
         passEncoder.setVertexBuffers(
             0,
             [this.sponza.verticesBuffer, this.sponza.normalsBuffer, this.sponza.uvsBuffer],
             [0, 0, 0]
         );
+        // passEncoder.setVertexBuffer(0, this.sponza.verticesBuffer);
+        // passEncoder.setVertexBuffer(1, this.sponza.normalsBuffer);
+        // passEncoder.setVertexBuffer(2, this.sponza.uvsBuffer);
         passEncoder.setIndexBuffer(this.sponza.indicesBuffer);
 
         passEncoder.setBindGroup(0, this.uniformBindGroupWriteGBuffer);
@@ -1013,6 +935,7 @@ export default class DeferredRenderer {
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
         quadPassEncoder.setPipeline(this.quadPipeline);
         quadPassEncoder.setVertexBuffers(0, [this.quadVerticesBuffer], [0]);
+        // quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
         quadPassEncoder.setBindGroup(1, this.debugViewUniformBindGroup);
         quadPassEncoder.draw(6, 1, 0, 0);
