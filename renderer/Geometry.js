@@ -64,7 +64,7 @@ export default class Geometry {
             ],
         };
 
-        // Complex scene management shall update when in object list
+        // Complex scene management shall update when in drawing list
         this.verticesBuffer = this.device.createBuffer({
             size: this.vertices.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
@@ -88,6 +88,18 @@ export default class Geometry {
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
         });
         this.indicesBuffer.setSubData(0, this.indices);
+    }
+
+    draw(passEncoder, instanceCount) {
+        passEncoder.setVertexBuffers(
+            0,
+            [this.verticesBuffer, this.normalsBuffer, this.uvsBuffer],
+            [0, 0, 0]
+        );
+        passEncoder.setIndexBuffer(this.indicesBuffer);
+
+        // indexed
+        passEncoder.drawIndexed(this.indices.length, instanceCount, 0, 0, 0);
     }
 
     

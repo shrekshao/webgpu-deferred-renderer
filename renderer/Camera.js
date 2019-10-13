@@ -3,7 +3,7 @@ export default class Camera {
     constructor (canvas) {
 
         let eulerX = 0;
-        let eulerY = 0;
+        let eulerY = Math.PI;
 
         let mouseDown = false;
         let mouseButtonId = 0;
@@ -14,8 +14,9 @@ export default class Camera {
         let forward = vec3.fromValues(0, 0, 1);
         let tmpVec3 = vec3.create();
 
-        this.eye = vec3.fromValues(0, 0.5, 0);
-        this.view = vec3.fromValues(0, 0, 1);
+        // this.eye = vec3.fromValues(0, 0.5, 0);
+        this.eye = vec3.fromValues(0, 0.5, 1);
+        this.view = vec3.fromValues(0, 0, -1);
         this.up = vec3.fromValues(0, 1, 0);
 
         this.center = vec3.create();
