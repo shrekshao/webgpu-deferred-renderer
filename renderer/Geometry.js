@@ -91,11 +91,14 @@ export default class Geometry {
     }
 
     draw(passEncoder, instanceCount) {
-        passEncoder.setVertexBuffers(
-            0,
-            [this.verticesBuffer, this.normalsBuffer, this.uvsBuffer],
-            [0, 0, 0]
-        );
+        passEncoder.setVertexBuffer(0, this.verticesBuffer);
+        passEncoder.setVertexBuffer(1, this.normalsBuffer);
+        passEncoder.setVertexBuffer(2, this.uvsBuffer);
+        // passEncoder.setVertexBuffers(
+        //     0,
+        //     [this.verticesBuffer, this.normalsBuffer, this.uvsBuffer],
+        //     [0, 0, 0]
+        // );
         passEncoder.setIndexBuffer(this.indicesBuffer);
 
         // indexed

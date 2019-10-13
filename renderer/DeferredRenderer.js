@@ -756,8 +756,8 @@ export default class DeferredRenderer {
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
         quadPassEncoder.setPipeline(this.quadPipeline);
-        quadPassEncoder.setVertexBuffers(0, [this.quadVerticesBuffer], [0]);
-        // quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
+        // quadPassEncoder.setVertexBuffers(0, [this.quadVerticesBuffer], [0]);
+        quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
         quadPassEncoder.setBindGroup(1, this.debugViewUniformBindGroup);
         quadPassEncoder.draw(6, 1, 0, 0);
