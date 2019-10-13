@@ -4,16 +4,6 @@ export default class Geometry {
     }
 
     fromObjMesh(mesh) {
-        // mesh is from webgl-obj-loader
-        // console.log(mesh);
-
-        // mesh.indices;
-        // mesh.vertices;
-        // mesh.vertexNormals;
-        // mesh.textures;  //uv
-
-        // separate buffers
-
         this.fromData(
             new Float32Array(mesh.vertices),
             new Float32Array(mesh.vertexNormals),
@@ -94,11 +84,6 @@ export default class Geometry {
         passEncoder.setVertexBuffer(0, this.verticesBuffer);
         passEncoder.setVertexBuffer(1, this.normalsBuffer);
         passEncoder.setVertexBuffer(2, this.uvsBuffer);
-        // passEncoder.setVertexBuffers(
-        //     0,
-        //     [this.verticesBuffer, this.normalsBuffer, this.uvsBuffer],
-        //     [0, 0, 0]
-        // );
         passEncoder.setIndexBuffer(this.indicesBuffer);
 
         // indexed

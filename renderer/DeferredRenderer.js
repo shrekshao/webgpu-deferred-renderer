@@ -16,19 +16,6 @@ void main() {
 }
 `;
 
-const fragmentShaderFullScreenQuadGLSL = `#version 450
-layout(set = 0, binding = 0) uniform sampler quadSampler;
-layout(set = 0, binding = 1) uniform texture2D quadTexture;
-
-layout(location = 0) in vec2 fragUV;
-layout(location = 0) out vec4 outColor;
-
-void main() {
-    outColor = texture(sampler2D(quadTexture, quadSampler), fragUV);
-    // outColor = vec4(texture(sampler2D(quadTexture, quadSampler), fragUV).r, 0.0, 0.0, 1.0);
-}
-`;
-
 const fragmentShaderGBufferDebugViewGLSL = `#version 450
 
 #define NUM_GBUFFERS 3
@@ -72,6 +59,27 @@ void main() {
     {
         outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
     }
+}
+`;
+
+const fragmentShaderDeferredShadingOnePointLightGLSL = `#version 450
+#define NUM_GBUFFERS 3
+
+layout(set = 0, binding = 0) uniform sampler quadSampler;
+layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
+layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
+layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
+
+layout(set = 1, binding = 0) uniform Uniforms {
+    vec4 lightPosition;
+    vec4 lightColor;
+} uniforms;
+
+layout(location = 0) in vec2 fragUV;
+layout(location = 0) out vec4 outColor;
+
+void main() {
+    outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
 }
 `;
 
@@ -178,30 +186,37 @@ let tmpMat4 = mat4.create();
 export default class DeferredRenderer {
     constructor(canvas) {
         this.canvas = canvas;
-        // this.drawables = [];
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
         this.drawableLists = [];    // {renderpass: GPURenderPass, drawables: []}
 
+        this.camera = new Camera(canvas);
+
         // dat.gui controls
         this.debugViewOffset = 0.5;
+        // this.renderMode = 'debugView';
+        
 
-        this.camera = new Camera(canvas);
+        this.renderFuncs = {
+            'debugView': this.renderGBufferDebugView,
+            'deferredBasic': this.renderDeferredBasic,
+        };
+        this.renderModeLists = Object.keys(this.renderFuncs);
+        this.renderMode = this.renderModeLists[0];
+
+        this.curRenderModeFunc = this.renderGBufferDebugView;
     }
 
-    // draw() {
-
-    //     // Render pass 1: MRT to G-Buffers
-    //     for (let i = 0; i < this.drawables.length; i++) {
-    //         this.drawables[i].draw();
-    //     }
-    // }
+    onChangeRenderMode(v) {
+        this.curRenderModeFunc = this.renderFuncs[v];
+    }
 
     //------------------
 
     async init() {
         /* Context, Device, SwapChain */
         const adapter = await navigator.gpu.requestAdapter();
-        // const device = await adapter.requestDevice({});
         const device = this.device = await adapter.requestDevice({});
 
         const glslangModule = await import('https://unpkg.com/@webgpu/glslang@0.0.7/web/glslang.js');
@@ -231,35 +246,36 @@ export default class DeferredRenderer {
 
         await this.setupScene(device);
 
-        const uniformsBindGroupLayout = device.createBindGroupLayout({
-            bindings: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.VERTEX,
-                    type: "uniform-buffer"
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    type: "sampler"
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    type: "sampled-texture",
-                    textureComponentType: "float"
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    type: "sampled-texture",
-                    textureComponentType: "float"
-                },
-            ]
-        });
+        // const uniformsBindGroupLayout = device.createBindGroupLayout({
+        //     bindings: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.VERTEX,
+        //             type: "uniform-buffer"
+        //         },
+        //         {
+        //             binding: 1,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             type: "sampler"
+        //         },
+        //         {
+        //             binding: 2,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             type: "sampled-texture",
+        //             textureComponentType: "float"
+        //         },
+        //         {
+        //             binding: 3,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             type: "sampled-texture",
+        //             textureComponentType: "float"
+        //         },
+        //     ]
+        // });
 
         /* Render Pipeline */
-        const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [uniformsBindGroupLayout] });
+        // const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [uniformsBindGroupLayout] });
+        const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [BlinnPhongDeferredMaterial.uniformsBindGroupLayout] });
         const pipeline = this.pipeline = device.createRenderPipeline({
             layout: pipelineLayout,
 
@@ -410,47 +426,6 @@ export default class DeferredRenderer {
             }
         };
 
-
-
-        
-
-        const samplerRepeat = this.sampler = device.createSampler({
-            addressModeU: "repeat",
-            addressModeV: "repeat",
-            magFilter: "linear",
-            minFilter: "linear",
-            mipmapFilter: "linear"
-        });
-
-        // this.uniformBindGroupWriteGBuffer = device.createBindGroup({
-        //     layout: uniformsBindGroupLayout,
-        //     bindings: [
-        //         {
-        //             binding: 0,
-        //             resource: {
-        //                 buffer: uniformBuffer,
-        //                 offset: 0,
-        //                 // size: matrixSize
-        //                 size: uniformBufferSize
-        //             }
-        //         },
-        //         {
-        //             binding: 1,
-        //             resource: samplerRepeat,
-        //         },
-        //         {
-        //             binding: 2,
-        //             resource: this.albedoMap.createView(),
-        //         },
-        //         {
-        //             binding: 3,
-        //             resource: this.normalMap.createView(),
-        //         },
-        //     ],
-        // });
-
-
-
         this.setupQuadPipeline();
         
     }
@@ -494,7 +469,7 @@ export default class DeferredRenderer {
             ]
         });
 
-        const debugViewBindGroupLayout = this.debugViewsBindGroupLayout = device.createBindGroupLayout({
+        const uniformBufferBindGroupLayout = this.uniformBufferBindGroupLayout = device.createBindGroupLayout({
             bindings: [
                 {
                     binding: 0,
@@ -504,8 +479,8 @@ export default class DeferredRenderer {
             ]
         });
 
-        const quadPipeLineLayout = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout, debugViewBindGroupLayout] });
-        const quadPipeline = this.quadPipeline = device.createRenderPipeline({
+        const quadPipeLineLayout = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout, uniformBufferBindGroupLayout] });
+        this.gbufferDebugViewPipeline = device.createRenderPipeline({
             layout: quadPipeLineLayout,
 
             vertexStage: {
@@ -516,8 +491,56 @@ export default class DeferredRenderer {
             },
             fragmentStage: {
                 module: device.createShaderModule({
-                    // code: glslang.compileGLSL(fragmentShaderFullScreenQuadGLSL, "fragment"),
                     code: glslang.compileGLSL(fragmentShaderGBufferDebugViewGLSL, "fragment"),
+                }),
+                entryPoint: "main"
+            },
+
+            primitiveTopology: "triangle-list",
+
+            vertexInput: {
+                indexFormat: "uint32",
+                vertexBuffers: [{
+                    stride: quadVertexSize, //padding
+                    stepMode: "vertex",
+                    attributeSet: [{
+                        // position
+                        shaderLocation: 0,
+                        offset: 0,
+                        format: "float4"
+                    },
+                    {
+                        // uv
+                        shaderLocation: 1,
+                        offset: quadUVOffset,
+                        format: "float2"
+                    }]
+                }]
+            },
+
+            rasterizationState: {
+                frontFace: 'ccw',
+                cullMode: 'back'
+            },
+
+            colorStates: [{
+                format: "bgra8unorm",
+                alphaBlend: {},
+                colorBlend: {}
+            }]
+        });
+        this.deferredBasicPipeline = device.createRenderPipeline({
+            layout: quadPipeLineLayout,
+
+            vertexStage: {
+                module: device.createShaderModule({
+                    code: glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                }),
+                entryPoint: "main"
+            },
+            fragmentStage: {
+                module: device.createShaderModule({
+                    code: glslang.compileGLSL(fragmentShaderDeferredShadingOnePointLightGLSL, "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -590,6 +613,11 @@ export default class DeferredRenderer {
             ]
         });
 
+        this.setupGBufferDebugViewPipeline();
+        this.setupDeferredBasicPipeline();
+    }
+
+    setupGBufferDebugViewPipeline() {
         const debugViewUniformBufferSize = 16;
         const debugViewUniformBuffer = this.debugViewUniformBuffer = this.device.createBuffer({
             size: debugViewUniformBufferSize,
@@ -597,7 +625,7 @@ export default class DeferredRenderer {
         });
 
         this.debugViewUniformBindGroup = this.device.createBindGroup({
-            layout: this.debugViewsBindGroupLayout,
+            layout: this.uniformBufferBindGroupLayout,
             bindings: [
                 {
                     binding: 0,
@@ -609,6 +637,10 @@ export default class DeferredRenderer {
                 }
             ]
         });
+    }
+
+    setupDeferredBasicPipeline() {
+        
     }
 
 
@@ -747,16 +779,33 @@ export default class DeferredRenderer {
 
         // render full screen quad
 
+        this.curRenderModeFunc(commandEncoder);
+    }
+
+
+    renderGBufferDebugView(commandEncoder) {
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
         this.debugViewUniformBuffer.setSubData(0, new Float32Array([this.debugViewOffset]));
-        // this.debugViewUniformBuffer.setSubData(0, new Float32Array([this.debugViewOffset, 0, 0, 0]));
-        // this.debugViewUniformBuffer.setSubData(0, new Float32Array([0.5, 0, 0, 0]));
 
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
-        quadPassEncoder.setPipeline(this.quadPipeline);
-        // quadPassEncoder.setVertexBuffers(0, [this.quadVerticesBuffer], [0]);
+        quadPassEncoder.setPipeline(this.gbufferDebugViewPipeline);
+        quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
+        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+        quadPassEncoder.setBindGroup(1, this.debugViewUniformBindGroup);
+        quadPassEncoder.draw(6, 1, 0, 0);
+        quadPassEncoder.endPass();
+
+        this.device.getQueue().submit([commandEncoder.finish()]);
+    }
+
+    renderDeferredBasic(commandEncoder) {
+        const swapChainTexture = this.swapChain.getCurrentTexture();
+
+        this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
+        const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
+        quadPassEncoder.setPipeline(this.deferredBasicPipeline);
         quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
         quadPassEncoder.setBindGroup(1, this.debugViewUniformBindGroup);

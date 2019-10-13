@@ -15,6 +15,8 @@ const renderer = new Renderer(canvas);
 await renderer.init();
 
 gui.add(renderer, 'debugViewOffset', 0.0, 5.0);
+gui.add(renderer, 'renderMode', renderer.renderModeLists).onChange(renderer.onChangeRenderMode.bind(renderer));
+
 
 function frame() {
     renderer.frame();

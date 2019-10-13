@@ -9,9 +9,10 @@
     <script src="third_party/dat.gui.min.js"></script>
 </head>
 
-<body>
+<body style="width: 100%; height: 100%; margin: 0; overflow: hidden">
     <div id="not-supported" style="display: none">WebGPU not supported! Please visit <a href="//webgpu.io">webgpu.io</a> to see the current implementation status.</div>
-    <canvas height=512 width=512></canvas>
+    <canvas></canvas>
+    <!-- <canvas height=512 width=512></canvas> -->
     <!-- <canvas height=600 width=600></canvas> -->
     <!-- <script>
         import main from './main'
@@ -21,8 +22,6 @@
     </script> -->
     <script type="module" src="app.js"></script>
     <!-- <script type="module" src="main.js"></script> -->
-    <script data-href="https://github.com/austinEng/webgpu-samples/blob/master/two_cubes.html"
-        src="https://unpkg.com/github-corners/dist/embed.min.js"></script>
 </body>
 
 </html>
