@@ -15,10 +15,10 @@ layout(location = 2) out vec2 fragUV;
 // Metallic, Roughness, Emissive, Motion, etc.
 
 void main() {
-    fragPosition = uniforms.modelViewMatrix * vec4(position, 1);
-    fragNormal = normalize(uniforms.modelViewNormalMatrix * vec4(normal, 0));
+    fragPosition = vec4(position, 1);
+    fragNormal = normalize(vec4(normal, 0));
     fragUV = uv;
-    gl_Position = uniforms.projectionMatrix * fragPosition;
+    gl_Position = uniforms.projectionMatrix * uniforms.modelViewMatrix * fragPosition;
     // gl_Position = vec4(0.1 * position.xy, 0.5, 1);
     // gl_Position = vec4( clamp(position.xy, vec2(-0.5, -0.8), vec2(1, 1)), 0.5, 1);
 }
@@ -47,13 +47,12 @@ vec3 applyNormalMap(vec3 geomnor, vec3 normap) {
 
 void main() {
     outGBufferPosition = fragPosition;
-    // outGBufferNormal = fragNormal;  // TODO: normal map
     outGBufferNormal = vec4(applyNormalMap(fragNormal.xyz, texture(sampler2D(normalMap, defaultSampler), fragUV).rgb), 1);
     outGBufferAlbedo = texture(sampler2D(albedoMap, defaultSampler), fragUV);
 }
 `;
 
-export default class BlinnPhongDeferredMaterial {
+export default class WriteGBufferMaterial {
     static setup(device) {
         this.uniformsBindGroupLayout = device.createBindGroupLayout({
             bindings: [
@@ -101,7 +100,7 @@ export default class BlinnPhongDeferredMaterial {
     constructor(sampler, albedoMap, normalMap) {
         // this.textures = textures;   // [1: , 2: , 3: GPUTexture]
 
-        this.uniformsBindGroupLayout = BlinnPhongDeferredMaterial.uniformsBindGroupLayout;
+        this.uniformsBindGroupLayout = WriteGBufferMaterial.uniformsBindGroupLayout;
 
         // to concat
         this.bindings = [

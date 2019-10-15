@@ -4,3 +4,5 @@ Sponza modeled by Marko Dabrovic, with UVs and crack errors fixed by Kenzie Lama
 Bump maps painted by Morgan McGuire.
 
 Highly simplified model adapted for CIS 565.
+
+Di is modeled by Shrek Shao.

@@ -38,6 +38,7 @@ export default class Drawable {
     // }
 
     draw(passEncoder) {
+        // TODO: this might be not enough (need dynamic bind group layout and prestore all data in one pass)
         passEncoder.setBindGroup(0, this.uniformBindGroup);
         this.geometry.draw(passEncoder, 1);
     }

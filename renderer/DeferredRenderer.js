@@ -1,8 +1,12 @@
 import Geometry from './Geometry.js';
 import Camera from './Camera.js';
-import BlinnPhongDeferredMaterial from './BlinnPhongDeferredMaterial.js';
+import WriteGBufferMaterial from './WriteGBufferMaterial.js';
 import Drawable from './Drawable.js';
+import PointLights from './PointLights.js';
 
+
+const tmpVec3 = vec3.create();
+const tmpVec4 = vec4.create();
 
 const vertexShaderFullScreenQuadGLSL = `#version 450
 layout(location = 0) in vec4 position;
@@ -70,16 +74,45 @@ layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
 layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
 layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
 
-layout(set = 1, binding = 0) uniform Uniforms {
+layout(set = 1, binding = 0) uniform CameraUniforms {
+    vec4 position;
+} camera;
+
+layout(set = 2, binding = 0) uniform Uniforms {
     vec4 lightPosition;
-    vec4 lightColor;
+    vec3 lightColor;
+    float lightRadius;
 } uniforms;
 
 layout(location = 0) in vec2 fragUV;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
+
+    vec3 position = texture(sampler2D(gbufferTexture0, quadSampler), fragUV).xyz;
+    vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
+    vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
+
+    float distance = distance(uniforms.lightPosition.xyz, position);
+    if (distance  > uniforms.lightRadius) {
+        discard;
+        return;
+    }
+
+    vec3 L = normalize(uniforms.lightPosition.xyz - position);
+    float lambert = max(dot(L, normal), 0.0);
+    vec3 V = normalize(camera.position.xyz - position);
+    vec3 H = normalize(L + V);
+    float specular = float(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+
+    outColor = vec4(
+        uniforms.lightColor * pow(1.0 - distance / uniforms.lightRadius, 2.0) *
+        (
+            albedo * lambert + 
+            vec3(1,1,1) * specular  // Assume white specular, modify if you add more specular info
+        ), 1);
+
+    // outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
 }
 `;
 
@@ -195,17 +228,19 @@ export default class DeferredRenderer {
 
         // dat.gui controls
         this.debugViewOffset = 0.5;
-        // this.renderMode = 'debugView';
-        
-
         this.renderFuncs = {
             'debugView': this.renderGBufferDebugView,
             'deferredBasic': this.renderDeferredBasic,
         };
         this.renderModeLists = Object.keys(this.renderFuncs);
-        this.renderMode = this.renderModeLists[0];
 
-        this.curRenderModeFunc = this.renderGBufferDebugView;
+        // const i = 0;
+        const i = 1;
+        this.renderMode = this.renderModeLists[i];
+        this.curRenderModeFunc = this.renderFuncs[this.renderMode];
+
+        // this.curRenderModeFunc = this.renderGBufferDebugView;
+        // this.curRenderModeFunc = this.renderDeferredBasic;
     }
 
     onChangeRenderMode(v) {
@@ -231,8 +266,7 @@ export default class DeferredRenderer {
         });
 
 
-        BlinnPhongDeferredMaterial.setup(device);
-
+        WriteGBufferMaterial.setup(device);
 
         const matrixSize = 4 * 16;  // 4x4 matrix
         // const offset = 256; // uniformBindGroup offset must be 256-byte aligned
@@ -243,6 +277,10 @@ export default class DeferredRenderer {
             size: uniformBufferSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
+
+
+
+        this.lights = new PointLights();
 
         await this.setupScene(device);
 
@@ -275,14 +313,14 @@ export default class DeferredRenderer {
 
         /* Render Pipeline */
         // const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [uniformsBindGroupLayout] });
-        const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [BlinnPhongDeferredMaterial.uniformsBindGroupLayout] });
+        const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [WriteGBufferMaterial.uniformsBindGroupLayout] });
         const pipeline = this.pipeline = device.createRenderPipeline({
             layout: pipelineLayout,
 
             vertexStage: {
                 module: device.createShaderModule({
                     // code: glslang.compileGLSL(vertexShaderGBufferGLSL, "vertex"),
-                    code: glslang.compileGLSL(BlinnPhongDeferredMaterial.vertexShaderGLSL, "vertex"),
+                    code: glslang.compileGLSL(WriteGBufferMaterial.vertexShaderGLSL, "vertex"),
                 }),
                 entryPoint: "main"
             },
@@ -290,7 +328,7 @@ export default class DeferredRenderer {
                 module: device.createShaderModule({
                     // code: glslang.compileGLSL(fragmentShaderBlinnPhongGLSL, "fragment"),
                     // code: glslang.compileGLSL(fragmentShaderGBufferGLSL, "fragment"),
-                    code: glslang.compileGLSL(BlinnPhongDeferredMaterial.fragmentShaderGLSL, "fragment"),
+                    code: glslang.compileGLSL(WriteGBufferMaterial.fragmentShaderGLSL, "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -313,12 +351,12 @@ export default class DeferredRenderer {
 
             colorStates: [
                 {
-                    format: "bgra8unorm",
+                    format: "rgba32float",
                     alphaBlend: {},
                     colorBlend: {},
                 },
                 {
-                    format: "bgra8unorm",
+                    format: "rgba32float",
                     alphaBlend: {},
                     colorBlend: {},
                 },
@@ -329,8 +367,6 @@ export default class DeferredRenderer {
                 },
             ],
         });
-
-        
 
         const depthTexture = this.depthTexture = device.createTexture({
             size: {
@@ -344,7 +380,6 @@ export default class DeferredRenderer {
             dimension: "2d",
             format: "depth24plus-stencil8",
             usage: GPUTextureUsage.OUTPUT_ATTACHMENT
-            // usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.SAMPLED
         });
 
 
@@ -364,7 +399,7 @@ export default class DeferredRenderer {
                 mipLevelCount: 1,
                 sampleCount: 1,
                 dimension: "2d",
-                format: "bgra8unorm",
+                format: "rgba32float",
                 usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
             }),
             device.createTexture({
@@ -377,7 +412,7 @@ export default class DeferredRenderer {
                 mipLevelCount: 1,
                 sampleCount: 1,
                 dimension: "2d",
-                format: "bgra8unorm",
+                format: "rgba32float",
                 usage: GPUTextureUsage.OUTPUT_ATTACHMENT | GPUTextureUsage.SAMPLED
             }),
             device.createTexture({
@@ -474,7 +509,17 @@ export default class DeferredRenderer {
                 {
                     binding: 0,
                     visibility: GPUShaderStage.FRAGMENT,
-                    type: "uniform-buffer"
+                    type: "uniform-buffer",
+                },
+            ]
+        });
+        const dynamicUniformBufferBindGroupLayout = this.dynamicUniformBufferBindGroupLayout = device.createBindGroupLayout({
+            bindings: [
+                {
+                    binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    type: "uniform-buffer",
+                    hasDynamicOffsets: true,
                 },
             ]
         });
@@ -525,12 +570,12 @@ export default class DeferredRenderer {
 
             colorStates: [{
                 format: "bgra8unorm",
-                alphaBlend: {},
-                colorBlend: {}
             }]
         });
+
+        const deferredBasicPipeline = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout, uniformBufferBindGroupLayout, dynamicUniformBufferBindGroupLayout] });
         this.deferredBasicPipeline = device.createRenderPipeline({
-            layout: quadPipeLineLayout,
+            layout: deferredBasicPipeline,
 
             vertexStage: {
                 module: device.createShaderModule({
@@ -575,7 +620,11 @@ export default class DeferredRenderer {
             colorStates: [{
                 format: "bgra8unorm",
                 alphaBlend: {},
-                colorBlend: {}
+                colorBlend: {
+                    srcFactor: "one",
+                    dstFactor: "one",
+                    operation: "add"
+                }
             }]
         });
 
@@ -587,8 +636,8 @@ export default class DeferredRenderer {
         };
 
         const sampler = this.sampler = device.createSampler({
-            magFilter: "linear",
-            minFilter: "linear"
+            magFilter: "nearest",
+            minFilter: "nearest"
         });
 
         this.quadUniformBindGroup = this.device.createBindGroup({
@@ -640,7 +689,66 @@ export default class DeferredRenderer {
     }
 
     setupDeferredBasicPipeline() {
-        
+
+        const cameraPositionUniformBuffer = this.cameraPositionUniformBuffer = this.device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+
+        this.cameraPositionUniformBindGroup = this.device.createBindGroup({
+            layout: this.uniformBufferBindGroupLayout,
+            bindings: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: cameraPositionUniformBuffer,
+                        offset: 0,
+                        size: 16
+                    }
+                }
+            ]
+        });
+
+        const deferredBasicUniformBufferBindGroupSize = this.deferredBasicUniformBufferBindGroupSize = 16 * 2;
+        this.deferredBasicUniformBufferBindGroupOffset = 256;
+        const deferredBasicUniformBufferSize = this.lights.numLights * this.deferredBasicUniformBufferBindGroupOffset;
+
+        const deferredBasicUniformBuffer = this.deferredBasicUniformBuffer = this.device.createBuffer({
+            size: deferredBasicUniformBufferSize,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        // this.deferredBasicUniformBindGroup = this.device.createBindGroup({
+        //     layout: this.uniformBufferBindGroupLayout,
+        //     bindings: [
+        //         {
+        //             binding: 0,
+        //             resource: {
+        //                 buffer: deferredBasicUniformBuffer,
+        //                 offset: 0,
+        //                 size: deferredBasicUniformBufferBindGroupSize
+        //             }
+        //         }
+        //     ]
+        // });
+
+        this.deferredBasicUniformBindGroups = new Array(this.lights.numLights);
+
+        for (let i = 0; i < this.lights.numLights; i++) {
+            this.deferredBasicUniformBindGroups[i] = this.device.createBindGroup({
+                layout: this.dynamicUniformBufferBindGroupLayout,
+                bindings: [
+                    {
+                        binding: 0,
+                        resource: {
+                            buffer: deferredBasicUniformBuffer,
+                            offset: i * this.deferredBasicUniformBufferBindGroupOffset,
+                            size: deferredBasicUniformBufferBindGroupSize
+                        }
+                    }
+                ]
+            });
+        }
     }
 
 
@@ -677,7 +785,7 @@ export default class DeferredRenderer {
                 minFilter: "linear",
                 mipmapFilter: "linear"
             });
-            const material = new BlinnPhongDeferredMaterial(sampler, albedoMap, normalMap);
+            const material = new WriteGBufferMaterial(sampler, albedoMap, normalMap);
 
             const d = new Drawable(device, geometry, material, this.uniformBuffer);
 
@@ -688,56 +796,11 @@ export default class DeferredRenderer {
 
     async setupScene(device) {
 
-        // return new Promise((resolve) => {
-        //     OBJ.downloadMeshes({
-        //         'sponza': 'models/sponza.obj'
-        //         // 'sponza': 'models/di.obj'
-        //     }, resolve);
-        // }).then((meshes) => {
-        //     this.meshes = meshes;
-
-        //     // build mesh, drawable list here
-        //     const geometry = this.sponza = new Geometry(this.device);
-        //     geometry.fromObjMesh(meshes['sponza']);
-
-        // });
-
-        // const modelUrl = 'models/sponza.obj';
-        // const albedoUrl = 'models/color.jpg';
-        // const normalUrl = 'models/normal.png';
-
         await Promise.all([
             this.loadModel('models/sponza.obj', 'models/color.jpg', 'models/normal.png'),
             this.loadModel('models/di.obj', 'models/di.png', 'models/di-n.png'),
         ]);
     }
-
-    // updateTransformationMatrix() {
-    //     // let now = Date.now() / 1000;
-
-    //     this.uniformBuffer.setSubData(64, this.camera.projectionMatrix);
-
-    //     for (let i = 0; i < this.drawableLists.length; i++) {
-    //         const o = this.drawableLists[i];
-    //         // o.updateTransfrom(this.uniformBuffer);
-
-    //         // if (o.transform.needUpdate()) {
-    //         //     this.uniformBuffer.setSubData(0, o.transform.modelMatrix);
-    //         // }
-
-    //         this.uniformBuffer.setSubData(0, o.transform.modelMatrix);
-
-    //         mat4.multiply(tmpMat4, this.camera.viewMatrix, o.transform.modelMatrix);
-    //         mat4.invert(tmpMat4, tmpMat4);
-    //         mat4.transpose(tmpMat4, tmpMat4);
-    //         this.uniformBuffer.setSubData(128, tmpMat4);
-    //     }
-
-    //     // mat4.multiply(modelViewMatrix1, this.camera.viewMatrix, modelMatrix1);
-    //     // mat4.invert(tmpMat41, modelViewMatrix1);
-    //     // mat4.transpose(tmpMat41, tmpMat41); //normal matrix
-    // }
-
 
     frame() {
         // updateTransformationMatrix();
@@ -745,24 +808,15 @@ export default class DeferredRenderer {
 
         const commandEncoder = this.device.createCommandEncoder({});
 
-        // this.uniformBuffer.setSubData(0, modelViewMatrix1);
+        this.lights.update();
 
-        
-
-        // this.uniformBuffer.setSubData(offset, modelViewProjectionMatrix2);
-        // this.uniformBuffer.setSubData(256, modelViewProjectionMatrix2);
         const passEncoder = commandEncoder.beginRenderPass(this.renderPassDescriptor);
         passEncoder.setPipeline(this.pipeline);
-
-
-        // passEncoder.setBindGroup(0, this.uniformBindGroupWriteGBuffer);
 
         this.uniformBuffer.setSubData(64, this.camera.projectionMatrix);
 
         for (let i = 0; i < this.drawableLists.length; i++) {
             const o = this.drawableLists[i];
-
-            
 
             mat4.multiply(tmpMat4, this.camera.viewMatrix, o.transform.modelMatrix);
             this.uniformBuffer.setSubData(0, tmpMat4);
@@ -803,15 +857,50 @@ export default class DeferredRenderer {
     renderDeferredBasic(commandEncoder) {
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
+        this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+
+        let o = 0;
+        let ob = 0;
+        for (let i = 0; i < this.lights.numLights; i++) {
+            o = 3 * i;
+            ob = this.deferredBasicUniformBufferBindGroupOffset * i;
+
+            this.lights.getV3(this.lights.positions, o, tmpVec3);
+            this.deferredBasicUniformBuffer.setSubData(ob, tmpVec3);
+
+            this.lights.getV3(this.lights.colors, o, tmpVec4);
+            tmpVec4[3] = this.lights.radius[i];
+            this.deferredBasicUniformBuffer.setSubData(ob + 16, tmpVec4);
+        }
+
+
+
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
+        
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
         quadPassEncoder.setPipeline(this.deferredBasicPipeline);
         quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
-        quadPassEncoder.setBindGroup(1, this.debugViewUniformBindGroup);
-        quadPassEncoder.draw(6, 1, 0, 0);
-        quadPassEncoder.endPass();
+        quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
 
+        // quadPassEncoder.setBindGroup(1, this.deferredBasicUniformBindGroup);
+
+        
+        for (let i = 0; i < this.lights.numLights; i++) {
+            quadPassEncoder.setBindGroup(2, this.deferredBasicUniformBindGroups[i]);
+
+            // const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
+            // quadPassEncoder.setPipeline(this.deferredBasicPipeline);
+            // quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
+            // quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+            // quadPassEncoder.setBindGroup(1, this.deferredBasicUniformBindGroup);
+
+            quadPassEncoder.draw(6, 1, 0, 0);
+
+            // quadPassEncoder.endPass();
+        }
+
+        quadPassEncoder.endPass();
         this.device.getQueue().submit([commandEncoder.finish()]);
     }
 }
