@@ -41,7 +41,7 @@ At this point (Oct-11-2019)
 
 * Sampling from depth texture is not supported. Might be an obstacle for students want to some early-z optimization, cluster shading. (though could still be done using compute shader or write gl_Position.z to color buffer etc.)
 * Layered rendering is not supported. So seems like you could not use an array texture in shader and 2d texture array. This might make optimizing number and structure of GBuffer a bit more painful. You could write some helper functions like iterate through each gbuffer and injecting shader texts to make it better.
-* Texture support is pretty early at this point (as you may already noticed in `createTextureFromImage`). Also there's no `generateMipmap` counterpart. You might be able to write a helper function, or have prebuilt mipmap levels as separate image files.
+* Texture support is pretty early at this point (as you may have already noticed in `createTextureFromImage`). Also there's no `gl.generateMipmap` counterpart now. You might be able to write a helper function, or have prebuilt mipmap levels as separate image files.
 * I use native javascript module support in browser. You might want to introduce libs like Babel/webpack or not. There are goods and bads.
 
 ### Project task ideas
@@ -50,7 +50,7 @@ Some of my personal thoughts:
 
 * Tiled deferred (could use compute shader)
 * More gbuffer component, for example metallic, roughness to make a physically based renderer.
-* Making a glowing particle system (like a low-poly style flame) to make the most of deferred shading and compute shader in WebGPU to make the scene looks nicer.
+* Making a glowing particle system (like a low-poly style flame) to make the most of deferred shading and compute shader in WebGPU to make the scene looks nicer. (instead of some ghosty pure perf oriented lights)
     * ![](imgs/particle-idea.gif)
 * Some perf comparison compared to old WebGL deferred shader.
 

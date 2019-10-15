@@ -199,8 +199,6 @@ async function createTextureFromImage(device, src, usage) {
     return texture;
 }
 
-
-
 const quadVertexSize = 4 * 6;   // padding?
 const quadUVOffset = 4 * 4;
 const fullScreenQuadArray = new Float32Array([
@@ -212,9 +210,6 @@ const fullScreenQuadArray = new Float32Array([
     1, 1, 0.5, 1, 1, 1,
     -1, 1, 0.5, 1, 0, 1,
 ]);
-
-
-
 
 export default class DeferredRenderer {
     constructor(canvas) {
@@ -717,7 +712,7 @@ export default class DeferredRenderer {
         const pAlbedoMap = createTextureFromImage(device, albedoUrl, GPUTextureUsage.SAMPLED);
         const pNormalMap = normalUrl ? createTextureFromImage(device, normalUrl, GPUTextureUsage.SAMPLED) : null;
 
-        //, dModel, dAlbedoMap, dNormalMap
+        // dModel, dAlbedoMap, dNormalMap
         return Promise.all([pModel, pAlbedoMap, pNormalMap]).then((values) => {
             const meshes = values[0];
 
@@ -811,17 +806,14 @@ export default class DeferredRenderer {
 
         this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
 
-        let o = 0;
         let ob = 0;
         for (let i = 0; i < this.lights.numLights; i++) {
-            o = 3 * i;
             ob = this.deferredBasicUniformBufferBindGroupOffset * i;
 
-            this.lights.getV3(this.lights.positions, o, tmpVec3);
-            this.deferredBasicUniformBuffer.setSubData(ob, tmpVec3);
+            this.lights.getPosition(i, tmpVec4);
+            this.deferredBasicUniformBuffer.setSubData(ob, tmpVec4);
 
-            this.lights.getV3(this.lights.colors, o, tmpVec4);
-            tmpVec4[3] = this.lights.radius[i];
+            this.lights.getColorAndRadius(i, tmpVec4);
             this.deferredBasicUniformBuffer.setSubData(ob + 16, tmpVec4);
         }
 
