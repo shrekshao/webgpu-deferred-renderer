@@ -8,6 +8,12 @@
 
 ## To CIS 565 TA
 
+### Run locally
+
+```
+/Applications/Google\ Chrome\ Canary.app/Contents/MacOS/Google\ Chrome\ Canary  --enable-unsafe-webgpu "http://localhost:8080"
+```
+
 ### Status
 
 This is now a basic working implementation of deferred renderer using WebGPU API.
