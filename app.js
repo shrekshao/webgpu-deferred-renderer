@@ -6,21 +6,29 @@ import Renderer from './renderer/DeferredRenderer.js';
 
 
 (async function () {
-const gui = new dat.GUI();
+    
+    const stats = new Stats();
+    stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+    document.body.appendChild( stats.dom );
 
-const canvas = document.querySelector('canvas');
+    const gui = new dat.GUI();
 
-const renderer = new Renderer(canvas);
+    const canvas = document.querySelector('canvas');
 
-await renderer.init();
+    const renderer = new Renderer(canvas);
 
-gui.add(renderer, 'debugViewOffset', 0.0, 5.0);
-gui.add(renderer, 'renderMode', renderer.renderModeLists).onChange(renderer.onChangeRenderMode.bind(renderer));
+    await renderer.init();
+
+    gui.add(renderer, 'debugViewOffset', 0.0, 5.0);
+    gui.add(renderer, 'renderMode', renderer.renderModeLists).onChange(renderer.onChangeRenderMode.bind(renderer));
 
 
-function frame() {
-    renderer.frame();
+    function frame() {
+        stats.begin();
+        renderer.frame();
+        stats.end();
+        requestAnimationFrame(frame);
+    }
     requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
+
 })();
