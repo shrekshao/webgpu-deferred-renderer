@@ -2,7 +2,6 @@ const vertexShaderBlinnPhongGLSL = `#version 450
 layout(set = 0, binding = 0) uniform Uniforms {
     mat4 modelViewMatrix;
     mat4 projectionMatrix;
-    mat4 modelViewNormalMatrix;
 } uniforms;
 
 layout(location = 0) in vec3 position;
@@ -19,8 +18,6 @@ void main() {
     fragNormal = normalize(vec4(normal, 0));
     fragUV = uv;
     gl_Position = uniforms.projectionMatrix * uniforms.modelViewMatrix * fragPosition;
-    // gl_Position = vec4(0.1 * position.xy, 0.5, 1);
-    // gl_Position = vec4( clamp(position.xy, vec2(-0.5, -0.8), vec2(1, 1)), 0.5, 1);
 }
 `;
 

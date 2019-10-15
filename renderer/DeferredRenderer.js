@@ -7,6 +7,7 @@ import PointLights from './PointLights.js';
 
 const tmpVec3 = vec3.create();
 const tmpVec4 = vec4.create();
+const tmpMat4 = mat4.create();
 
 const vertexShaderFullScreenQuadGLSL = `#version 450
 layout(location = 0) in vec4 position;
@@ -212,8 +213,7 @@ const fullScreenQuadArray = new Float32Array([
     -1, 1, 0.5, 1, 0, 1,
 ]);
 
-let modelViewMatrix = mat4.create();
-let tmpMat4 = mat4.create();
+
 
 
 export default class DeferredRenderer {
@@ -271,7 +271,7 @@ export default class DeferredRenderer {
         const matrixSize = 4 * 16;  // 4x4 matrix
         // const offset = 256; // uniformBindGroup offset must be 256-byte aligned
         // const uniformBufferSize = offset + matrixSize;
-        const uniformBufferSize = 3 * matrixSize;
+        const uniformBufferSize = 2 * matrixSize;
 
         const uniformBuffer = this.uniformBuffer = device.createBuffer({
             size: uniformBufferSize,
@@ -776,12 +776,8 @@ export default class DeferredRenderer {
         for (let i = 0; i < this.drawableLists.length; i++) {
             const o = this.drawableLists[i];
 
-            // o.transform.needUpdate();
             mat4.multiply(tmpMat4, this.camera.viewMatrix, o.transform.getModelMatrix());
             this.uniformBuffer.setSubData(0, tmpMat4);
-            mat4.invert(tmpMat4, tmpMat4);
-            mat4.transpose(tmpMat4, tmpMat4);
-            this.uniformBuffer.setSubData(128, tmpMat4);
 
             o.draw(passEncoder);
         }
