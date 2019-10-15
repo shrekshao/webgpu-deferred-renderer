@@ -13,10 +13,6 @@ export default class Transform {
         this.dirty = true;
     }
 
-    // setScale(x, y, z) {
-    //     vec3.set(this.scale, x, y, z);
-    //     this.dirty = true;
-    // }
     setScale(s) {
         vec3.copy(this.scale, s);
         this.dirty = true;
@@ -33,13 +29,17 @@ export default class Transform {
     }
 
     needUpdate() {
-        // return this.dirty;
         if (this.dirty) {
             mat4.fromRotationTranslationScale(this.modelMatrix, this.rotation, this.translation, this.scale);
             this.dirty = false;
             return true;
         }
         return false;
+    }
+
+    getModelMatrix() {
+        this.needUpdate();
+        return this.modelMatrix;
     }
 
 }

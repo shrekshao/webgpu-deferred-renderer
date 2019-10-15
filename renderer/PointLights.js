@@ -6,25 +6,16 @@ export default class PointLights {
         this.numLights = 50;
         this.extentMin = vec3.fromValues(-14, -1, -6);
         this.extentMax = vec3.fromValues(14, 15, 6);
-        // this.extentMin = vec3.fromValues(-1, -1, -1);
-        // this.extentMax = vec3.fromValues(1, 1, 1);
-        // this.extentMin = vec3.fromValues(-14, -1, -6);
-        // this.extentMax = vec3.fromValues(14, 20, 6);
         this.positions = new Float32Array(this.numLights * 3);
         this.colors = new Float32Array(this.numLights * 3);
         this.radius = new Float32Array(this.numLights);
 
-        // this.velocity = new Float32Array(this.numLights);    // downwards
+        // this.velocity = new Float32Array(this.numLights);
 
         // init
 
         const extent = vec3.create();
         vec3.sub(extent, this.extentMax, this.extentMin);
-
-        
-
-        // Math.seedrandom(0);
-
 
         let offset = 0;
         for (let i = 0; i < this.numLights; i++) {

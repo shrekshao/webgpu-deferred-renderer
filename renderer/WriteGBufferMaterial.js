@@ -83,22 +83,9 @@ export default class WriteGBufferMaterial {
 
         this.vertexShaderGLSL = vertexShaderBlinnPhongGLSL;
         this.fragmentShaderGLSL = fragmentShaderGBufferGLSL;
-
-        // this.sampler = device.createSampler({
-        //     addressModeU: "repeat",
-        //     addressModeV: "repeat",
-        //     magFilter: "linear",
-        //     minFilter: "linear",
-        //     mipmapFilter: "linear"
-        // });
-
-        // this.colorStates =  [
-
-        // ]
     }
 
     constructor(sampler, albedoMap, normalMap) {
-        // this.textures = textures;   // [1: , 2: , 3: GPUTexture]
 
         this.uniformsBindGroupLayout = WriteGBufferMaterial.uniformsBindGroupLayout;
 

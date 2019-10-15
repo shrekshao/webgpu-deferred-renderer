@@ -5,12 +5,6 @@ export default class Drawable {
     // aggregate of assets data
     // geometry, textures, etc.
 
-    // DrawableInstanced
-    // 
-
-    // // user needs to make sure this fits current renderPipeline, bindGroup, etc.
-    
-
     constructor(device, geometry, material, uniformBuffer) {
         this.geometry = geometry;
         this.material = material;
@@ -38,8 +32,9 @@ export default class Drawable {
     // }
 
     draw(passEncoder) {
-        // TODO: this might be not enough (need dynamic bind group layout and prestore all data in one pass)
+        // TODO: this is not enough (need dynamic bind group layout and prestore all data in one pass)
         passEncoder.setBindGroup(0, this.uniformBindGroup);
+
         this.geometry.draw(passEncoder, 1);
     }
 }

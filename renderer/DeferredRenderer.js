@@ -279,55 +279,23 @@ export default class DeferredRenderer {
         });
 
 
-
         this.lights = new PointLights();
 
         await this.setupScene(device);
 
-        // const uniformsBindGroupLayout = device.createBindGroupLayout({
-        //     bindings: [
-        //         {
-        //             binding: 0,
-        //             visibility: GPUShaderStage.VERTEX,
-        //             type: "uniform-buffer"
-        //         },
-        //         {
-        //             binding: 1,
-        //             visibility: GPUShaderStage.FRAGMENT,
-        //             type: "sampler"
-        //         },
-        //         {
-        //             binding: 2,
-        //             visibility: GPUShaderStage.FRAGMENT,
-        //             type: "sampled-texture",
-        //             textureComponentType: "float"
-        //         },
-        //         {
-        //             binding: 3,
-        //             visibility: GPUShaderStage.FRAGMENT,
-        //             type: "sampled-texture",
-        //             textureComponentType: "float"
-        //         },
-        //     ]
-        // });
-
         /* Render Pipeline */
-        // const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [uniformsBindGroupLayout] });
         const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [WriteGBufferMaterial.uniformsBindGroupLayout] });
         const pipeline = this.pipeline = device.createRenderPipeline({
             layout: pipelineLayout,
 
             vertexStage: {
                 module: device.createShaderModule({
-                    // code: glslang.compileGLSL(vertexShaderGBufferGLSL, "vertex"),
                     code: glslang.compileGLSL(WriteGBufferMaterial.vertexShaderGLSL, "vertex"),
                 }),
                 entryPoint: "main"
             },
             fragmentStage: {
                 module: device.createShaderModule({
-                    // code: glslang.compileGLSL(fragmentShaderBlinnPhongGLSL, "fragment"),
-                    // code: glslang.compileGLSL(fragmentShaderGBufferGLSL, "fragment"),
                     code: glslang.compileGLSL(WriteGBufferMaterial.fragmentShaderGLSL, "fragment"),
                 }),
                 entryPoint: "main"
@@ -718,20 +686,6 @@ export default class DeferredRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
-        // this.deferredBasicUniformBindGroup = this.device.createBindGroup({
-        //     layout: this.uniformBufferBindGroupLayout,
-        //     bindings: [
-        //         {
-        //             binding: 0,
-        //             resource: {
-        //                 buffer: deferredBasicUniformBuffer,
-        //                 offset: 0,
-        //                 size: deferredBasicUniformBufferBindGroupSize
-        //             }
-        //         }
-        //     ]
-        // });
-
         this.deferredBasicUniformBindGroups = new Array(this.lights.numLights);
 
         for (let i = 0; i < this.lights.numLights; i++) {
@@ -752,7 +706,7 @@ export default class DeferredRenderer {
     }
 
 
-    async loadModel(modelUrl, albedoUrl, normalUrl) {
+    loadModel(modelUrl, albedoUrl, normalUrl) {
         const device = this.device;
         const pModel = new Promise((resolve) => {
             OBJ.downloadMeshes({
@@ -800,15 +754,19 @@ export default class DeferredRenderer {
             this.loadModel('models/sponza.obj', 'models/color.jpg', 'models/normal.png'),
             this.loadModel('models/di.obj', 'models/di.png', 'models/di-n.png'),
         ]);
+
+        // // test transformation
+        // const d = this.drawableLists[1];
+        // d.transform.setTranslation(vec3.fromValues(0, 2, 4));
     }
 
     frame() {
-        // updateTransformationMatrix();
-        // this.updateTransformationMatrix();
 
         const commandEncoder = this.device.createCommandEncoder({});
 
         this.lights.update();
+
+        // draw geometry, write gbuffers
 
         const passEncoder = commandEncoder.beginRenderPass(this.renderPassDescriptor);
         passEncoder.setPipeline(this.pipeline);
@@ -818,11 +776,11 @@ export default class DeferredRenderer {
         for (let i = 0; i < this.drawableLists.length; i++) {
             const o = this.drawableLists[i];
 
-            mat4.multiply(tmpMat4, this.camera.viewMatrix, o.transform.modelMatrix);
+            // o.transform.needUpdate();
+            mat4.multiply(tmpMat4, this.camera.viewMatrix, o.transform.getModelMatrix());
             this.uniformBuffer.setSubData(0, tmpMat4);
             mat4.invert(tmpMat4, tmpMat4);
             mat4.transpose(tmpMat4, tmpMat4);
-            this.uniformBuffer.setSubData(128, tmpMat4);
             this.uniformBuffer.setSubData(128, tmpMat4);
 
             o.draw(passEncoder);
@@ -830,12 +788,10 @@ export default class DeferredRenderer {
 
         passEncoder.endPass();
 
-
         // render full screen quad
 
         this.curRenderModeFunc(commandEncoder);
     }
-
 
     renderGBufferDebugView(commandEncoder) {
         const swapChainTexture = this.swapChain.getCurrentTexture();
@@ -873,8 +829,6 @@ export default class DeferredRenderer {
             this.deferredBasicUniformBuffer.setSubData(ob + 16, tmpVec4);
         }
 
-
-
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
@@ -883,21 +837,10 @@ export default class DeferredRenderer {
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
         quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
 
-        // quadPassEncoder.setBindGroup(1, this.deferredBasicUniformBindGroup);
-
-        
         for (let i = 0; i < this.lights.numLights; i++) {
             quadPassEncoder.setBindGroup(2, this.deferredBasicUniformBindGroups[i]);
 
-            // const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
-            // quadPassEncoder.setPipeline(this.deferredBasicPipeline);
-            // quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
-            // quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
-            // quadPassEncoder.setBindGroup(1, this.deferredBasicUniformBindGroup);
-
             quadPassEncoder.draw(6, 1, 0, 0);
-
-            // quadPassEncoder.endPass();
         }
 
         quadPassEncoder.endPass();
