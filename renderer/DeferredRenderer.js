@@ -806,16 +806,7 @@ export default class DeferredRenderer {
 
         this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
 
-        let ob = 0;
-        for (let i = 0; i < this.lights.numLights; i++) {
-            ob = this.deferredBasicUniformBufferBindGroupOffset * i;
-
-            this.lights.getPosition(i, tmpVec4);
-            this.deferredBasicUniformBuffer.setSubData(ob, tmpVec4);
-
-            this.lights.getColorAndRadius(i, tmpVec4);
-            this.deferredBasicUniformBuffer.setSubData(ob + 16, tmpVec4);
-        }
+        this.deferredBasicUniformBuffer.setSubData(0, this.lights.data);
 
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         

@@ -4,7 +4,7 @@ const tmpVec4 = vec4.create();
 export default class PointLights {
     // May use compute shader to simulate (particle) movement
     constructor() {
-        this.numLights = 50;
+        this.numLights = 100;
         this.extentMin = vec3.fromValues(-14, -1, -6);
         this.extentMax = vec3.fromValues(14, 15, 6);
         // this.positions = new Float32Array(this.numLights * 3);
@@ -14,7 +14,7 @@ export default class PointLights {
         // layout:
         // vec4 position;
         // vec3 color; float radius;
-        this.lightDataStride = 8;
+        this.lightDataStride = 64;  // offset 256 / 4 byte
         this.data = new Float32Array(this.numLights * this.lightDataStride);
 
         // this.velocity = new Float32Array(this.numLights);
