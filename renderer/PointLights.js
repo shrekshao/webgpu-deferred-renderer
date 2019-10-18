@@ -6,10 +6,9 @@ export default class PointLights {
     constructor() {
         this.numLights = 100;
         this.extentMin = vec3.fromValues(-14, -1, -6);
-        this.extentMax = vec3.fromValues(14, 15, 6);
-        // this.positions = new Float32Array(this.numLights * 3);
-        // this.colors = new Float32Array(this.numLights * 3);
-        // this.radius = new Float32Array(this.numLights);
+        this.extentMax = vec3.fromValues(14, 20, 6);
+        const extent = vec3.create();
+        vec3.sub(extent, this.extentMax, this.extentMin);
 
         // layout:
         // vec4 position;
@@ -17,13 +16,7 @@ export default class PointLights {
         this.lightDataStride = 64;  // offset 256 / 4 byte
         this.data = new Float32Array(this.numLights * this.lightDataStride);
 
-        // this.velocity = new Float32Array(this.numLights);
-
         // init
-
-        const extent = vec3.create();
-        vec3.sub(extent, this.extentMax, this.extentMin);
-
         let offset = 0;
         for (let i = 0; i < this.numLights; i++) {
             offset = this.lightDataStride * i;
@@ -40,18 +33,7 @@ export default class PointLights {
             // radius
             tmpVec4[3] = 4.0;
             this.setV4(this.data, offset + 4, tmpVec4);
-            // this.radius[i] = 4.0;
         }
-
-
-        // // test
-        // this.positions[0] = 0;
-        // this.positions[1] = 10;
-        // this.positions[2] = 0;
-
-        // this.positions[3] = 0;
-        // this.positions[4] = 4;
-        // this.positions[5] = 4;
     }
 
     setV3(array, offset, v3) {

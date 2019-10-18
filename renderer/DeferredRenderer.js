@@ -3,6 +3,7 @@ import Camera from './Camera.js';
 import WriteGBufferMaterial from './WriteGBufferMaterial.js';
 import Drawable from './Drawable.js';
 import PointLights from './PointLights.js';
+import LightCulling from './LightCulling.js';
 
 
 const tmpVec3 = vec3.create();
@@ -117,6 +118,74 @@ void main() {
 }
 `;
 
+const fragmentShaderDeferredShadingLightCullingGLSL = `#version 450
+#define NUM_GBUFFERS 3
+
+layout(set = 0, binding = 0) uniform sampler quadSampler;
+layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
+layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
+layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
+
+layout(set = 1, binding = 0) uniform CameraUniforms {
+    vec4 position;
+} camera;
+
+struct LightData
+{
+    vec4 position;
+    vec3 color;
+    float radius;
+};
+
+layout(std430, set = 2, binding = 0) buffer LightBuffer {
+    LightData data[];
+} lights;
+
+// TODO:
+// Tile light id entries
+// compact align or maxlights * safefactor
+
+layout(location = 0) in vec2 fragUV;
+layout(location = 0) out vec4 outColor;
+
+void main() {
+
+    vec3 position = texture(sampler2D(gbufferTexture0, quadSampler), fragUV).xyz;
+    vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
+    vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
+
+    
+    vec3 V = normalize(camera.position.xyz - position);
+
+    vec3 finalColor = vec3(0);
+
+    for ( int i = 0; i < 500; i++) {
+        LightData light = lights.data[i];
+
+        float distance = distance(light.position.xyz, position);
+        if (distance  > light.radius) {
+            continue;
+        }
+
+        vec3 L = normalize(light.position.xyz - position);
+        float lambert = max(dot(L, normal), 0.0);
+        vec3 H = normalize(L + V);
+        float specular = float(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+
+        finalColor += 
+            clamp(light.color * pow(1.0 - distance / light.radius, 2.0) *
+            (
+                albedo * lambert + 
+                    vec3(1,1,1) * specular  // Assume white specular, modify if you add more specular info
+            ), vec3(0), vec3(1));
+
+    }
+
+    // finalColor += vec3(0, 0, 0.5);
+
+    outColor = vec4(finalColor, 1);
+}
+`;
 
 async function createTextureFromImage(device, src, usage) {
     // Current hacky Texture impl for WebGPU
@@ -226,11 +295,13 @@ export default class DeferredRenderer {
         this.renderFuncs = {
             'debugView': this.renderGBufferDebugView,
             'deferredBasic': this.renderDeferredBasic,
+            'deferredLightCulling': this.renderDeferredLightCulling,
         };
         this.renderModeLists = Object.keys(this.renderFuncs);
 
         // const i = 0;
-        const i = 1;
+        // const i = 1;
+        const i = 2;
         this.renderMode = this.renderModeLists[i];
         this.curRenderModeFunc = this.renderFuncs[this.renderMode];
 
@@ -260,7 +331,6 @@ export default class DeferredRenderer {
             format: "bgra8unorm",
         });
 
-
         WriteGBufferMaterial.setup(device);
 
         const matrixSize = 4 * 16;  // 4x4 matrix
@@ -273,8 +343,10 @@ export default class DeferredRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
-
         this.lights = new PointLights();
+
+        this.lightCulling = new LightCulling(device, glslang);
+        await this.lightCulling.init();
 
         await this.setupScene(device);
 
@@ -487,19 +559,59 @@ export default class DeferredRenderer {
             ]
         });
 
-        const quadPipeLineLayout = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout, uniformBufferBindGroupLayout] });
-        this.gbufferDebugViewPipeline = device.createRenderPipeline({
+        this.renderFullScreenPassDescriptor = {
+            colorAttachments: [{
+                loadValue: {r: 0.0, g: 0.0, b: 0.0, a: 1.0},
+                storeOp: "store",
+            }],
+        };
+
+        const sampler = this.sampler = device.createSampler({
+            magFilter: "nearest",
+            minFilter: "nearest"
+        });
+
+        this.quadUniformBindGroup = this.device.createBindGroup({
+            layout: this.quadUniformsBindGroupLayout,
+            bindings: [
+                {
+                    binding: 0,
+                    resource: sampler,
+                },
+                {
+                    binding: 1,
+                    resource: this.gbufferTextures[0].createView()
+                },
+                {
+                    binding: 2,
+                    resource: this.gbufferTextures[1].createView()
+                },
+                {
+                    binding: 3,
+                    resource: this.gbufferTextures[2].createView()
+                },
+            ]
+        });
+
+        this.setupGBufferDebugViewPipeline();
+        this.setupDeferredBasicPipeline();
+        this.setupDeferredLightCullingPipeline();
+    }
+
+    setupGBufferDebugViewPipeline() {
+        const quadPipeLineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [this.quadUniformsBindGroupLayout, this.uniformBufferBindGroupLayout] });
+        this.gbufferDebugViewPipeline = this.device.createRenderPipeline({
             layout: quadPipeLineLayout,
 
             vertexStage: {
-                module: device.createShaderModule({
-                    code: glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
                 }),
                 entryPoint: "main"
             },
             fragmentStage: {
-                module: device.createShaderModule({
-                    code: glslang.compileGLSL(fragmentShaderGBufferDebugViewGLSL, "fragment"),
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(fragmentShaderGBufferDebugViewGLSL, "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -536,19 +648,47 @@ export default class DeferredRenderer {
             }]
         });
 
-        const deferredBasicPipeline = device.createPipelineLayout({ bindGroupLayouts: [quadUniformsBindGroupLayout, uniformBufferBindGroupLayout, dynamicUniformBufferBindGroupLayout] });
-        this.deferredBasicPipeline = device.createRenderPipeline({
-            layout: deferredBasicPipeline,
+        const debugViewUniformBufferSize = 16;
+        const debugViewUniformBuffer = this.debugViewUniformBuffer = this.device.createBuffer({
+            size: debugViewUniformBufferSize,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        this.debugViewUniformBindGroup = this.device.createBindGroup({
+            layout: this.uniformBufferBindGroupLayout,
+            bindings: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: debugViewUniformBuffer,
+                        offset: 0,
+                        size: debugViewUniformBufferSize
+                    }
+                }
+            ]
+        });
+    }
+
+    setupDeferredBasicPipeline() {
+
+        const deferredBasicPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
+                this.quadUniformsBindGroupLayout,
+                this.uniformBufferBindGroupLayout,
+                this.dynamicUniformBufferBindGroupLayout
+            ]
+        });
+        this.deferredBasicPipeline = this.device.createRenderPipeline({
+            layout: deferredBasicPipelineLayout,
 
             vertexStage: {
-                module: device.createShaderModule({
-                    code: glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
                 }),
                 entryPoint: "main"
             },
             fragmentStage: {
-                module: device.createShaderModule({
-                    code: glslang.compileGLSL(fragmentShaderDeferredShadingOnePointLightGLSL, "fragment"),
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(fragmentShaderDeferredShadingOnePointLightGLSL, "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -590,68 +730,6 @@ export default class DeferredRenderer {
                 }
             }]
         });
-
-        this.renderFullScreenPassDescriptor = {
-            colorAttachments: [{
-                loadValue: {r: 0.0, g: 0.0, b: 0.0, a: 1.0},
-                storeOp: "store",
-            }],
-        };
-
-        const sampler = this.sampler = device.createSampler({
-            magFilter: "nearest",
-            minFilter: "nearest"
-        });
-
-        this.quadUniformBindGroup = this.device.createBindGroup({
-            layout: this.quadUniformsBindGroupLayout,
-            bindings: [
-                {
-                    binding: 0,
-                    resource: sampler,
-                },
-                {
-                    binding: 1,
-                    resource: this.gbufferTextures[0].createView()
-                },
-                {
-                    binding: 2,
-                    resource: this.gbufferTextures[1].createView()
-                },
-                {
-                    binding: 3,
-                    resource: this.gbufferTextures[2].createView()
-                },
-            ]
-        });
-
-        this.setupGBufferDebugViewPipeline();
-        this.setupDeferredBasicPipeline();
-    }
-
-    setupGBufferDebugViewPipeline() {
-        const debugViewUniformBufferSize = 16;
-        const debugViewUniformBuffer = this.debugViewUniformBuffer = this.device.createBuffer({
-            size: debugViewUniformBufferSize,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
-
-        this.debugViewUniformBindGroup = this.device.createBindGroup({
-            layout: this.uniformBufferBindGroupLayout,
-            bindings: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: debugViewUniformBuffer,
-                        offset: 0,
-                        size: debugViewUniformBufferSize
-                    }
-                }
-            ]
-        });
-    }
-
-    setupDeferredBasicPipeline() {
 
         const cameraPositionUniformBuffer = this.cameraPositionUniformBuffer = this.device.createBuffer({
             size: 16,
@@ -698,6 +776,69 @@ export default class DeferredRenderer {
                 ]
             });
         }
+    }
+
+    setupDeferredLightCullingPipeline() {
+        // share camera uniform buffer
+
+        const deferredLightCullingPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
+            this.quadUniformsBindGroupLayout,
+            this.uniformBufferBindGroupLayout,
+            this.lightCulling.lightBufferBindGroupLayout
+        ] });
+        this.deferredLightCullingPipeline = this.device.createRenderPipeline({
+            layout: deferredLightCullingPipelineLayout,
+
+            vertexStage: {
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                }),
+                entryPoint: "main"
+            },
+            fragmentStage: {
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(fragmentShaderDeferredShadingLightCullingGLSL, "fragment"),
+                }),
+                entryPoint: "main"
+            },
+
+            primitiveTopology: "triangle-list",
+
+            vertexInput: {
+                indexFormat: "uint32",
+                vertexBuffers: [{
+                    stride: quadVertexSize, //padding
+                    stepMode: "vertex",
+                    attributeSet: [{
+                        // position
+                        shaderLocation: 0,
+                        offset: 0,
+                        format: "float4"
+                    },
+                    {
+                        // uv
+                        shaderLocation: 1,
+                        offset: quadUVOffset,
+                        format: "float2"
+                    }]
+                }]
+            },
+
+            rasterizationState: {
+                frontFace: 'ccw',
+                cullMode: 'back'
+            },
+
+            colorStates: [{
+                format: "bgra8unorm",
+                alphaBlend: {},
+                colorBlend: {
+                    // srcFactor: "one",
+                    // dstFactor: "one",
+                    // operation: "add"
+                }
+            }]
+        });
     }
 
 
@@ -759,7 +900,7 @@ export default class DeferredRenderer {
 
         const commandEncoder = this.device.createCommandEncoder({});
 
-        this.lights.update();
+        // this.lights.update();
 
         // draw geometry, write gbuffers
 
@@ -802,6 +943,8 @@ export default class DeferredRenderer {
     }
 
     renderDeferredBasic(commandEncoder) {
+        this.lights.update();
+
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
         this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
@@ -821,6 +964,28 @@ export default class DeferredRenderer {
 
             quadPassEncoder.draw(6, 1, 0, 0);
         }
+
+        quadPassEncoder.endPass();
+        this.device.getQueue().submit([commandEncoder.finish()]);
+    }
+
+    renderDeferredLightCulling(commandEncoder) {
+        this.lightCulling.update();
+
+        const swapChainTexture = this.swapChain.getCurrentTexture();
+
+        this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+
+        this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
+        
+        const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
+        quadPassEncoder.setPipeline(this.deferredLightCullingPipeline);
+        quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
+        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+        quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
+        quadPassEncoder.setBindGroup(2, this.lightCulling.lightBufferBindGroup);
+
+        quadPassEncoder.draw(6, 1, 0, 0);
 
         quadPassEncoder.endPass();
         this.device.getQueue().submit([commandEncoder.finish()]);
