@@ -14,6 +14,8 @@ import Renderer from './renderer/DeferredRenderer.js';
     const gui = new dat.GUI();
 
     const canvas = document.querySelector('canvas');
+    // canvas.width = window.innerWidth;
+    // canvas.height = window.innerHeight;
 
     const renderer = new Renderer(canvas);
 
