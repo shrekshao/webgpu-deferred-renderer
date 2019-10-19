@@ -1,6 +1,6 @@
 # WebGPU Deferred Renderer
 
-![](imgs/deferred-big.gif)
+![](imgs/tiled-deferred-4096-lights.gif)
 
 ![](imgs/tile-light-count-heatmap.gif)
 
@@ -19,11 +19,9 @@
 
 ### Status
 
-This is now a basic working implementation of deferred renderer using WebGPU API.
+This is now a basic working implementation of deferred renderer using WebGPU API, with a tile-based light culling implementation powered by compute shader.
 
 I'm still doing cleaning, refactoring, fixing, etc. on the fly.
-
-Also I really want to do some tiled shading functionality which could demonstrate compute shader provided by WebGPU (not availble in WebGL). I'm not sure if I have enough time to implement this part. But you could definitely list this feature as a project action item. Some helpful webgpu compute shader material: [Get started with GPU Compute on the Web](https://developers.google.com/web/updates/2019/08/get-started-with-gpu-compute-on-the-web)
 
 I have it working on Mac 10.14.6 AMD, Chrome Canary (79.0.3941.0 (Official Build) canary (64-bit))
 
@@ -37,6 +35,8 @@ Unfortunately at this point there aren't many articles/docs for WebGPU. I basica
     * Should give you some basic scenarios of using WebGPU. I believe it's not fully covered at this point. Good source to learn, mimic, and copy/paste. (though it's in typescript)
 * [WebGPU spec](https://gpuweb.github.io/gpuweb/)
     * Very helpful when you have questions for certain parameters of a descriptor.
+* [Get started with GPU Compute on the Web](https://developers.google.com/web/updates/2019/08/get-started-with-gpu-compute-on-the-web)
+    * Helpful for buffer mapped and compute shader setup.
 
 ### Notes
 

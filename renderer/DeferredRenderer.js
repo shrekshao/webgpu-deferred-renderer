@@ -221,13 +221,95 @@ void main() {
     int tileId = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
     // float t = float(tileLightId.data[tileId].count) / 5.0;
-    float t = float(tileLightId.data[tileId].count) / ( float(NUM_TILE_LIGHT_SLOT) * 0.5 );
+    float t = float(tileLightId.data[tileId].count) / ( float(NUM_TILE_LIGHT_SLOT) );
     vec3 color = vec3(4.0 * t - 2.0, t < 0.5 ? 4.0 * t: 4.0 - 4.0 * t , 2.0 - 4.0 * t);
     outColor = vec4(color, 1);
 
     // for (int i = 0, len = tileLightId.data[tileId].count; i < len; i++) {
     //     tileLightId.data[tileId].lightId[i]
     // }
+}
+`;
+
+const fragmentShaderDeferredShadingTiledGLSL = `#version 450
+#define NUM_GBUFFERS 3
+
+#define NUM_LIGHTS $1
+#define NUM_TILES $2
+#define TILE_COUNT_X $3
+#define TILE_COUNT_Y $4
+#define NUM_TILE_LIGHT_SLOT $5
+
+layout(set = 0, binding = 0) uniform sampler quadSampler;
+layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
+layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
+layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
+
+layout(set = 1, binding = 0) uniform CameraUniforms {
+    vec4 position;
+} camera;
+
+struct LightData
+{
+    vec4 position;
+    vec3 color;
+    float radius;
+};
+
+layout(std430, set = 2, binding = 0) buffer LightBuffer {
+    LightData data[];
+} lights;
+
+struct TileLightIdData
+{
+    int count;
+    int lightId[NUM_TILE_LIGHT_SLOT];
+};
+
+layout(std430, set = 3, binding = 0) buffer TileLightIdBuffer {
+    TileLightIdData data[NUM_TILES];
+} tileLightId;
+
+layout(location = 0) in vec2 fragUV;
+layout(location = 0) out vec4 outColor;
+
+void main() {
+
+    vec3 position = texture(sampler2D(gbufferTexture0, quadSampler), fragUV).xyz;
+    vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
+    vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
+    
+    vec3 V = normalize(camera.position.xyz - position);
+
+    vec2 tileScale = vec2(1.0 / TILE_COUNT_X, 1.0 / TILE_COUNT_Y);
+    ivec2 tileCoord = ivec2(floor( fragUV / tileScale ));
+    int tileId = tileCoord.x + tileCoord.y * TILE_COUNT_X;
+
+    vec3 finalColor = vec3(0);
+
+    for (int i = 0, len = tileLightId.data[tileId].count; i < len; i++) {
+        LightData light = lights.data[ tileLightId.data[tileId].lightId[i] ];
+
+        float distance = distance(light.position.xyz, position);
+        if (distance  > light.radius) {
+            continue;
+        }
+
+        vec3 L = normalize(light.position.xyz - position);
+        float lambert = max(dot(L, normal), 0.0);
+        vec3 H = normalize(L + V);
+        float specular = float(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+
+        finalColor += 
+            clamp(light.color * pow(1.0 - distance / light.radius, 2.0) *
+            (
+                albedo * lambert + 
+                    vec3(1,1,1) * specular  // Assume white specular, modify if you add more specular info
+            ), vec3(0), vec3(1));
+
+    }
+
+    outColor = vec4(finalColor, 1);
 }
 `;
 
@@ -337,14 +419,16 @@ export default class DeferredRenderer {
         this.renderFuncs = {
             'debugView': this.renderGBufferDebugView,
             // 'deferredBasic': this.renderDeferredBasic,
-            'deferredLightCulling': this.renderDeferredLightCulling,
+            'deferredLightLoop': this.renderDeferredLightLoop,
             'deferredTiledLightDebug': this.renderDeferredTiledLightDebug,
+            'deferredTiledLightCulling': this.renderDeferredLightCulling,
         };
         this.renderModeLists = Object.keys(this.renderFuncs);
 
         // const i = 0;
         // const i = 1;
-        const i = 2;
+        // const i = 2;
+        const i = 3;
         this.renderMode = this.renderModeLists[i];
         this.curRenderModeFunc = this.renderFuncs[this.renderMode];
 
@@ -657,8 +741,9 @@ export default class DeferredRenderer {
 
         this.setupGBufferDebugViewPipeline();
         // this.setupDeferredBasicPipeline();
-        this.setupDeferredLightCullingPipeline();
+        this.setupDeferredLightLoopPipeline();
         this.setupDeferredTiledLightDebugPipeline();
+        this.setupDeferredLightCullingPipeline();
     }
 
     setupGBufferDebugViewPipeline() {
@@ -824,16 +909,16 @@ export default class DeferredRenderer {
         }
     }
 
-    setupDeferredLightCullingPipeline() {
+    setupDeferredLightLoopPipeline() {
         // share camera uniform buffer
 
-        const deferredLightCullingPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
+        const deferredLightLoopPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
             this.quadUniformsBindGroupLayout,
             this.uniformBufferBindGroupLayout,
             this.lightCulling.storageBufferBindGroupLayout
         ] });
-        this.deferredLightCullingPipeline = this.device.createRenderPipeline({
-            layout: deferredLightCullingPipelineLayout,
+        this.deferredLightLoopPipeline = this.device.createRenderPipeline({
+            layout: deferredLightLoopPipelineLayout,
 
             vertexStage: {
                 module: this.device.createShaderModule({
@@ -903,6 +988,66 @@ export default class DeferredRenderer {
                 module: this.device.createShaderModule({
                     code: this.glslang.compileGLSL(
                         replaceArray(fragmentShaderDeferredShadingTiledLightDebugGLSL,
+                            ["$1", "$2", "$3", "$4", "$5"],
+                            [this.lightCulling.numLights, this.lightCulling.numTiles, this.lightCulling.tileCount[0], this.lightCulling.tileCount[1], this.lightCulling.tileLightSlot]), "fragment"),
+                }),
+                entryPoint: "main"
+            },
+            primitiveTopology: "triangle-list",
+
+            vertexInput: {
+                indexFormat: "uint32",
+                vertexBuffers: [{
+                    stride: quadVertexSize, //padding
+                    stepMode: "vertex",
+                    attributeSet: [{
+                        // position
+                        shaderLocation: 0,
+                        offset: 0,
+                        format: "float4"
+                    },
+                    {
+                        // uv
+                        shaderLocation: 1,
+                        offset: quadUVOffset,
+                        format: "float2"
+                    }]
+                }]
+            },
+
+            rasterizationState: {
+                frontFace: 'ccw',
+                cullMode: 'back'
+            },
+
+            colorStates: [{
+                format: "bgra8unorm",
+                alphaBlend: {},
+                colorBlend: {}
+            }]
+        });
+    }
+
+    setupDeferredLightCullingPipeline() {
+        const deferredLightCullingPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
+            this.quadUniformsBindGroupLayout,
+            this.uniformBufferBindGroupLayout,
+            this.lightCulling.storageBufferBindGroupLayout,
+            this.lightCulling.storageBufferBindGroupLayout,
+        ] });
+        this.deferredLightCullingPipeline = this.device.createRenderPipeline({
+            layout: deferredLightCullingPipelineLayout,
+
+            vertexStage: {
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                }),
+                entryPoint: "main"
+            },
+            fragmentStage: {
+                module: this.device.createShaderModule({
+                    code: this.glslang.compileGLSL(
+                        replaceArray(fragmentShaderDeferredShadingTiledGLSL,
                             ["$1", "$2", "$3", "$4", "$5"],
                             [this.lightCulling.numLights, this.lightCulling.numTiles, this.lightCulling.tileCount[0], this.lightCulling.tileCount[1], this.lightCulling.tileLightSlot]), "fragment"),
                 }),
@@ -1071,8 +1216,8 @@ export default class DeferredRenderer {
         this.device.getQueue().submit([commandEncoder.finish()]);
     }
 
-    renderDeferredLightCulling(commandEncoder) {
-        this.lightCulling.update();
+    renderDeferredLightLoop(commandEncoder) {
+        this.lightCulling.update();     // TODO: only update light position
 
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
@@ -1081,7 +1226,7 @@ export default class DeferredRenderer {
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
-        quadPassEncoder.setPipeline(this.deferredLightCullingPipeline);
+        quadPassEncoder.setPipeline(this.deferredLightLoopPipeline);
         quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
         quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
@@ -1108,6 +1253,29 @@ export default class DeferredRenderer {
         // quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
         // quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
         quadPassEncoder.setBindGroup(0, this.lightCulling.tileLightIdBufferBindGroup);
+
+        quadPassEncoder.draw(6, 1, 0, 0);
+
+        quadPassEncoder.endPass();
+        this.device.getQueue().submit([commandEncoder.finish()]);
+    }
+
+    renderDeferredLightCulling(commandEncoder) {
+        this.lightCulling.update();
+
+        const swapChainTexture = this.swapChain.getCurrentTexture();
+
+        this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+
+        this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
+        
+        const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
+        quadPassEncoder.setPipeline(this.deferredLightCullingPipeline);
+        quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
+        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+        quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
+        quadPassEncoder.setBindGroup(2, this.lightCulling.lightBufferBindGroup);
+        quadPassEncoder.setBindGroup(3, this.lightCulling.tileLightIdBufferBindGroup);
 
         quadPassEncoder.draw(6, 1, 0, 0);
 

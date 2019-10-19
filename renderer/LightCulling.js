@@ -54,6 +54,7 @@ layout(std430, set = 2, binding = 0) buffer TileLightIdBuffer {
 } tileLightId;
 
 
+// TODO: tile/cluster frustum plane could be generated using another compute pass
 // // Tile plane info
 // // could be precomputed by another compute pass
 // struct TileInfo
@@ -191,7 +192,9 @@ export default class LightCulling {
     async init(canvas, camera) {
         this.camera = camera;
 
-        this.numLights = 500;
+        // this.numLights = 4096;
+        this.numLights = 2048;
+        // this.numLights = 500;
         // this.numLights = 15;
         // this.numLights = 2;
         this.extentMin = vec3.fromValues(-14, -1, -6);
