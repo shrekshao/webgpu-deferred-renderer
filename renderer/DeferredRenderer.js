@@ -216,11 +216,12 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     vec2 tileScale = vec2(1.0 / TILE_COUNT_X, 1.0 / TILE_COUNT_Y);
-    // ivec2 tileCoord = ivec2(floor( fragUV / tileScale ));
-    ivec2 tileCoord = ivec2(floor( vec2(fragUV.x, 1.0-fragUV.y) / tileScale ));
+    ivec2 tileCoord = ivec2(floor( fragUV / tileScale ));
+    // ivec2 tileCoord = ivec2(floor( vec2(fragUV.x, 1.0-fragUV.y) / tileScale ));
     int tileId = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
-    float t = float(tileLightId.data[tileId].count) / 5.0;
+    // float t = float(tileLightId.data[tileId].count) / 5.0;
+    float t = float(tileLightId.data[tileId].count) / ( float(NUM_TILE_LIGHT_SLOT) * 0.5 );
     vec3 color = vec3(4.0 * t - 2.0, t < 0.5 ? 4.0 * t: 4.0 - 4.0 * t , 2.0 - 4.0 * t);
     outColor = vec4(color, 1);
 

@@ -4,26 +4,6 @@ const tmpVec3 = vec3.create();
 const tmpVec4 = vec4.create();
 const tmpMat4 = mat4.create();
 
-
-// const clearTileLightIdComputeShaderCode = `#version 450
-// #define NUM_TILES $2
-
-// struct TileLightIdData
-// {
-//     int count;
-//     int lightId[NUM_LIGHTS];
-// };
-
-// layout(std430, set = 2, binding = 0) buffer TileLightIdBuffer {
-//     TileLightIdData data[NUM_TILES];
-// } tileLightId;
-
-// void main()
-// {
-//     if (gl_GlobalInvocationID.x >= NUM_LIGHTS) return;
-// }
-// `;
-
 const computeShaderCode = `#version 450
 
 #define NUM_LIGHTS $1
@@ -31,6 +11,11 @@ const computeShaderCode = `#version 450
 #define TILE_COUNT_X $3
 #define TILE_COUNT_Y $4
 #define NUM_TILE_LIGHT_SLOT $5
+
+#define TILE_SIZE $6
+
+
+// #define LIGHT_POSITION_TILE_TEST
 
 struct LightData
 {
@@ -49,10 +34,11 @@ layout(std140, set = 1, binding = 0) uniform Uniforms {
     vec3 extentMax;
 
     // camera
-    mat4 viewProjectionMatrix;
+    mat4 viewMatrix;
+    mat4 projectionMatrix;
 
-    // // Tile info
-    // ivec4 screen;   //width, height
+    // Tile info
+    vec4 fullScreenSize;    // width, height
 
 } uniforms;
 
@@ -89,14 +75,11 @@ void main() {
     position.y = position.y < uniforms.extentMin.y ? uniforms.extentMax.y : position.y - 0.1;
     lightArrays.data[gl_GlobalInvocationID.x].position.y  = position.y;
 
-    // Light culling
 
-    // TODO: view frustum culling for tile based, or aabb for cluster, etc.
+#ifdef LIGHT_POSITION_TILE_TEST
+    // Testing: light tile assignment -----------------------
 
-    // now just do uniform grid assign to complete pipeline
-    // make a heatmap
-
-    vec4 p = uniforms.viewProjectionMatrix * vec4(position, 1);
+    vec4 p = uniforms.projectionMatrix * uniforms.viewMatrix * vec4(position, 1);
     p /= p.w;   // in NDC
 
     if (p.x > 1 || p.x < -1 || p.y > 1 || p.y < -1 || p.z < -1 || p.z > 1) return;
@@ -113,19 +96,90 @@ void main() {
     if (offset >= NUM_TILE_LIGHT_SLOT) return;
 
     tileLightId.data[tileId].lightId[offset] = int(gl_GlobalInvocationID.x);
+
+    // -------------------------------------------------------
+
+#else
+    // Light culling
+    // TODO: view frustum culling for tile based, or aabb for cluster, etc.
+
+    mat4 M = uniforms.projectionMatrix;
+
+    float viewNear = - M[3][2] / ( -1.0 + M[2][2]);
+    float viewFar = - M[3][2] / (1.0 + M[2][2]);
+
+    vec4 lightPos = uniforms.viewMatrix * vec4(position, 1);
+    lightPos /= lightPos.w;
+
+    float lightRadius = lightArrays.data[gl_GlobalInvocationID.x].radius;
+
+    vec4 boxMin = lightPos - vec4( vec3(lightRadius), 0.0);
+    vec4 boxMax = lightPos + vec4( vec3(lightRadius), 0.0);
+
+    // vec4 frustumPlanes[4];
+    vec4 frustumPlanes[6];
+
+    frustumPlanes[4] = vec4(0.0, 0.0, -1.0, viewNear);    // near
+    frustumPlanes[5] = vec4(0.0, 0.0, 1.0, -viewFar);    // far
+
+    // for (int y = 0; y < 3; y++) {
+    //     for (int x = 0; x < 3; x++) {
+    for (int y = 0; y < TILE_COUNT_Y; y++) {
+        for (int x = 0; x < TILE_COUNT_X; x++) {
+
+            ivec2 tilePixel0Idx = ivec2(x * TILE_SIZE, y * TILE_SIZE);
+
+            // tile position in NDC space
+            vec2 floorCoord = 2.0 * vec2(tilePixel0Idx) / uniforms.fullScreenSize.xy - vec2(1.0);  // -1, 1
+            vec2 ceilCoord = 2.0 * vec2(tilePixel0Idx + ivec2(TILE_SIZE)) / uniforms.fullScreenSize.xy - vec2(1.0);  // -1, 1
+
+            
+            // float viewNear = -1.0;
+            // float viewFar = -1000.0;
+            vec2 viewFloorCoord = vec2( (- viewNear * floorCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * floorCoord.y - M[2][1] * viewNear) / M[1][1] );
+            vec2 viewCeilCoord = vec2( (- viewNear * ceilCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * ceilCoord.y - M[2][1] * viewNear) / M[1][1] );
+
+            frustumPlanes[0] = vec4(1.0, 0.0, - viewFloorCoord.x / viewNear, 0.0);       // left
+            frustumPlanes[1] = vec4(-1.0, 0.0, viewCeilCoord.x / viewNear, 0.0);   // right
+            frustumPlanes[2] = vec4(0.0, 1.0, - viewFloorCoord.y / viewNear, 0.0);       // bottom
+            frustumPlanes[3] = vec4(0.0, -1.0, viewCeilCoord.y / viewNear, 0.0);   // top
+
+            float dp = 0.0;     //dot product
+
+            for (int i = 0; i < 6; i++)
+            // for (int i = 0; i < 4; i++)
+            {
+                dp += min(0.0, dot(
+                    vec4( 
+                        frustumPlanes[i].x > 0.0 ? boxMax.x : boxMin.x, 
+                        frustumPlanes[i].y > 0.0 ? boxMax.y : boxMin.y, 
+                        frustumPlanes[i].z > 0.0 ? boxMax.z : boxMin.z, 
+                        1.0), 
+                    frustumPlanes[i]));
+            }
+
+            if (dp >= 0.0) {
+                // overlapping
+                int tileId = x + y * TILE_COUNT_X;
+
+                if (tileId < 0 || tileId >= NUM_TILES) continue;
+            
+                int offset = atomicAdd(tileLightId.data[tileId].count, 1);
+            
+                if (offset >= NUM_TILE_LIGHT_SLOT) continue;
+            
+                tileLightId.data[tileId].lightId[offset] = int(gl_GlobalInvocationID.x);
+            }
+        }
+    }
+#endif
+    
 }
 `;
 
 function getCount(t, f) {
     return Math.floor( (t + f - 1) / f);
 }
-
-// function replaceArray(str, find, replace) {
-//     for (var i = 0; i < find.length; i++) {
-//         str = str.replace(find[i], replace[i]);
-//     }
-//     return str;
-// };
 
 export default class LightCulling {
 
@@ -138,6 +192,7 @@ export default class LightCulling {
         this.camera = camera;
 
         this.numLights = 500;
+        // this.numLights = 15;
         // this.numLights = 2;
         this.extentMin = vec3.fromValues(-14, -1, -6);
         this.extentMax = vec3.fromValues(14, 20, 6);
@@ -171,7 +226,9 @@ export default class LightCulling {
             tmpVec4[1] = Math.random() * 2;
             tmpVec4[2] = Math.random() * 2;
             // radius
-            tmpVec4[3] = 4.0;
+            // tmpVec4[3] = 4.0;
+            tmpVec4[3] = 2.0;
+            // tmpVec4[3] = 0.1;
             this.setV4(lightData, offset + 4, tmpVec4);
         }
 
@@ -186,8 +243,8 @@ export default class LightCulling {
         // // lightData[11] = 1;
 
         // lightData[8] = -5;
-        // lightData[9] = 4;
-        // lightData[10] = -2;
+        // lightData[9] = 14;
+        // lightData[10] = 2;
         // lightData[11] = 1;
 
         // new Float32Array(arrayBuffer).set(lightData);
@@ -218,13 +275,15 @@ export default class LightCulling {
             ]
         });
 
-        const uniformBufferSize = 4 * 4 * 2 + 4 * 16;
+        const uniformBufferSize = 4 * 4 * 2 + 4 * 16 * 2 + 4 * 4;
         const uniformBuffer = this.uniformBuffer = this.device.createBuffer({
             size: uniformBufferSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         uniformBuffer.setSubData(0, this.extentMin);
         uniformBuffer.setSubData(16, this.extentMax);
+        vec4.set(tmpVec4, canvas.width, canvas.height, 0, 0);
+        uniformBuffer.setSubData(160, tmpVec4);
         
 
         const uniformBufferBindGroupLayout = this.device.createBindGroupLayout({
@@ -257,9 +316,16 @@ export default class LightCulling {
         this.numTiles = this.tileCount[0] * this.tileCount[1];
 
         // numLights slot + 1 (for count)
-        this.tileLightSlot = Math.ceil(this.numLights * 0.1);    // safe factor
+        // this.tileLightSlot = Math.ceil(this.numLights * 0.1);    // safe factor
+        // this.tileLightSlot = Math.max( 127, Math.ceil(this.numLights * 0.1) );    // safe factor
+        const safeFactor = 0.1;
+        this.tileLightSlot = Math.max( 127, Math.ceil(this.numLights * safeFactor / 128) * 128 - 1 );
         this.tileLightIdBufferSize = (this.tileLightSlot + 1) * this.numTiles;
         this.tileLightIDBufferSizeInByte = this.tileLightIdBufferSize * 4;
+
+        console.log('Lights: ' + this.numLights);
+        console.log('Tile light slots: ' + this.tileLightSlot);
+        console.log('tiles ' + this.numTiles);
         // Easy approach
         // each tile has numLights (max) entry for light id
         // use atmoicAdd to trace offset for each tile (avoid implementing parallel reduction)
@@ -300,7 +366,7 @@ export default class LightCulling {
             computeStage: {
               module: this.device.createShaderModule({
                 code: this.glslang.compileGLSL(
-                    replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4", "$5"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot]),
+                    replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4", "$5", "$6"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot, this.tileSize]),
                     "compute")
               }),
               entryPoint: "main"
@@ -324,8 +390,12 @@ export default class LightCulling {
     }
 
     update() {
-        mat4.multiply(tmpMat4, this.camera.projectionMatrix, this.camera.viewMatrix);
-        this.uniformBuffer.setSubData(32, tmpMat4);
+        // mat4.multiply(tmpMat4, this.camera.projectionMatrix, this.camera.viewMatrix);
+        // this.uniformBuffer.setSubData(32, tmpMat4);
+        this.uniformBuffer.setSubData(32, this.camera.viewMatrix);
+        // this.uniformBuffer.setSubData(96, this.camera.projectionMatrix);
+        mat4.scale(tmpMat4, this.camera.projectionMatrix, vec3.fromValues(1, -1, 1));
+        this.uniformBuffer.setSubData(96, tmpMat4);
 
         this.tileLightIdGPUBuffer.setSubData(0, this.tileLightIdData);  // temp clear
         // this.tileLightIdGPUBuffer.setSubData(0, this.tileLightIdClearData);  // temp clear

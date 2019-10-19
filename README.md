@@ -1,9 +1,12 @@
 # WebGPU Deferred Renderer
 
-![](imgs/deferred.gif)
+![](imgs/deferred-big.gif)
 
+![](imgs/tile-light-count-heatmap.gif)
 
 ![](imgs/debug-view.gif)
+
+
 
 
 ## To CIS 565 TA

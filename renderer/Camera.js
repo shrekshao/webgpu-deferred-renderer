@@ -15,7 +15,8 @@ export default class Camera {
         let tmpVec3 = vec3.create();
 
         // this.eye = vec3.fromValues(0, 0.5, 0);
-        this.eye = vec3.fromValues(1.5, 0.5, 0.5);
+        // this.eye = vec3.fromValues(1.5, 0.5, 0.5);
+        this.eye = vec3.fromValues(4.5, 0.5, 0.5);
         // this.view = vec3.fromValues(0, 0, -1);
         this.view = vec3.fromValues(-1, 0, 0);
         this.up = vec3.fromValues(0, 1, 0);
@@ -86,7 +87,8 @@ export default class Camera {
         }.bind(this);
         window.onwheel = function(event) {
             // panning
-            vec3.scale(tmpVec3, this.view, event.deltaX * 0.01);
+            // vec3.scale(tmpVec3, this.view, delta * 0.01);
+            vec3.scale(tmpVec3, this.view, event.deltaY * 0.01);
             vec3.add(this.eye, this.eye, tmpVec3);
 
             vec3.add(this.center, this.eye, this.view);
