@@ -30,6 +30,7 @@ const computeShaderCode = `#version 450
 #define NUM_TILES $2
 #define TILE_COUNT_X $3
 #define TILE_COUNT_Y $4
+#define NUM_TILE_LIGHT_SLOT $5
 
 struct LightData
 {
@@ -59,7 +60,7 @@ layout(std140, set = 1, binding = 0) uniform Uniforms {
 struct TileLightIdData
 {
     int count;
-    int lightId[NUM_LIGHTS];
+    int lightId[NUM_TILE_LIGHT_SLOT];
 };
 
 layout(std430, set = 2, binding = 0) buffer TileLightIdBuffer {
@@ -109,7 +110,7 @@ void main() {
 
     int offset = atomicAdd(tileLightId.data[tileId].count, 1);
 
-    if (offset >= NUM_LIGHTS) return;
+    if (offset >= NUM_TILE_LIGHT_SLOT) return;
 
     tileLightId.data[tileId].lightId[offset] = int(gl_GlobalInvocationID.x);
 }
@@ -256,7 +257,8 @@ export default class LightCulling {
         this.numTiles = this.tileCount[0] * this.tileCount[1];
 
         // numLights slot + 1 (for count)
-        this.tileLightIdBufferSize = (this.numLights + 1) * this.numTiles;
+        this.tileLightSlot = Math.ceil(this.numLights * 0.1);    // safe factor
+        this.tileLightIdBufferSize = (this.tileLightSlot + 1) * this.numTiles;
         this.tileLightIDBufferSizeInByte = this.tileLightIdBufferSize * 4;
         // Easy approach
         // each tile has numLights (max) entry for light id
@@ -272,10 +274,6 @@ export default class LightCulling {
 
         tileLightIdGPUBuffer.unmap();
         this.tileLightIdGPUBuffer = tileLightIdGPUBuffer;
-
-
-        // this.tileLightIdClearData = new Int32Array(this.tileLightIdBufferSize);
-        // this.tileLightIdClearData.fill(0);
 
         this.tileLightIdBufferBindGroup = this.device.createBindGroup({
             layout: this.storageBufferBindGroupLayout,
@@ -302,7 +300,7 @@ export default class LightCulling {
             computeStage: {
               module: this.device.createShaderModule({
                 code: this.glslang.compileGLSL(
-                    replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1]]),
+                    replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4", "$5"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot]),
                     "compute")
               }),
               entryPoint: "main"

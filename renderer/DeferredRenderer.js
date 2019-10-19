@@ -198,11 +198,12 @@ const fragmentShaderDeferredShadingTiledLightDebugGLSL = `#version 450
 #define NUM_TILES $2
 #define TILE_COUNT_X $3
 #define TILE_COUNT_Y $4
+#define NUM_TILE_LIGHT_SLOT $5
 
 struct TileLightIdData
 {
     int count;
-    int lightId[NUM_LIGHTS];
+    int lightId[NUM_TILE_LIGHT_SLOT];
 };
 
 layout(std430, set = 0, binding = 0) buffer TileLightIdBuffer {
@@ -841,7 +842,8 @@ export default class DeferredRenderer {
             },
             fragmentStage: {
                 module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(fragmentShaderDeferredShadingLoopLightsGLSL.replace('$1', this.lightCulling.numLights), "fragment"),
+                    code: this.glslang.compileGLSL(
+                        fragmentShaderDeferredShadingLoopLightsGLSL.replace('$1', this.lightCulling.numLights), "fragment"),
                 }),
                 entryPoint: "main"
             },
@@ -898,7 +900,10 @@ export default class DeferredRenderer {
             },
             fragmentStage: {
                 module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(replaceArray(fragmentShaderDeferredShadingTiledLightDebugGLSL, ['$1', '$2', '$3', '$4'], [this.lightCulling.numLights, this.lightCulling.numTiles, this.lightCulling.tileCount[0], this.lightCulling.tileCount[1]]), "fragment"),
+                    code: this.glslang.compileGLSL(
+                        replaceArray(fragmentShaderDeferredShadingTiledLightDebugGLSL,
+                            ["$1", "$2", "$3", "$4", "$5"],
+                            [this.lightCulling.numLights, this.lightCulling.numTiles, this.lightCulling.tileCount[0], this.lightCulling.tileCount[1], this.lightCulling.tileLightSlot]), "fragment"),
                 }),
                 entryPoint: "main"
             },
