@@ -2,7 +2,6 @@ import Geometry from './Geometry.js';
 import Camera from './Camera.js';
 import WriteGBufferMaterial from './WriteGBufferMaterial.js';
 import Drawable from './Drawable.js';
-import PointLights from './PointLights.js';
 import LightCulling from './LightCulling.js';
 
 import {replaceArray} from './utils/stringReplaceArray.js'
@@ -418,7 +417,6 @@ export default class DeferredRenderer {
         this.debugViewOffset = 0.5;
         this.renderFuncs = {
             'debugView': this.renderGBufferDebugView,
-            // 'deferredBasic': this.renderDeferredBasic,
             'deferredLightLoop': this.renderDeferredLightLoop,
             'deferredTiledLightDebug': this.renderDeferredTiledLightDebug,
             'deferredTiledLightCulling': this.renderDeferredLightCulling,
@@ -447,6 +445,7 @@ export default class DeferredRenderer {
         const adapter = await navigator.gpu.requestAdapter();
         const device = this.device = await adapter.requestDevice({});
 
+        // TODO: move this to local
         const glslangModule = await import('https://unpkg.com/@webgpu/glslang@0.0.7/web/glslang.js');
         const glslang = this.glslang = await glslangModule.default();
 
@@ -469,8 +468,6 @@ export default class DeferredRenderer {
             size: uniformBufferSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-
-        this.lights = new PointLights();
 
         this.lightCulling = new LightCulling(device, glslang);
         await this.lightCulling.init(canvas, this.camera);
@@ -817,98 +814,6 @@ export default class DeferredRenderer {
         });
     }
 
-    setupDeferredBasicPipeline() {
-
-        // TODO: remove this pipeline
-
-        const deferredBasicPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
-                this.quadUniformsBindGroupLayout,
-                this.uniformBufferBindGroupLayout,
-                this.dynamicUniformBufferBindGroupLayout
-            ]
-        });
-        this.deferredBasicPipeline = this.device.createRenderPipeline({
-            layout: deferredBasicPipelineLayout,
-
-            vertexStage: {
-                module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
-                }),
-                entryPoint: "main"
-            },
-            fragmentStage: {
-                module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(fragmentShaderDeferredShadingOnePointLightGLSL, "fragment"),
-                }),
-                entryPoint: "main"
-            },
-
-            primitiveTopology: "triangle-list",
-
-            vertexInput: {
-                indexFormat: "uint32",
-                vertexBuffers: [{
-                    stride: quadVertexSize, //padding
-                    stepMode: "vertex",
-                    attributeSet: [{
-                        // position
-                        shaderLocation: 0,
-                        offset: 0,
-                        format: "float4"
-                    },
-                    {
-                        // uv
-                        shaderLocation: 1,
-                        offset: quadUVOffset,
-                        format: "float2"
-                    }]
-                }]
-            },
-
-            rasterizationState: {
-                frontFace: 'ccw',
-                cullMode: 'back'
-            },
-
-            colorStates: [{
-                format: "bgra8unorm",
-                alphaBlend: {},
-                colorBlend: {
-                    srcFactor: "one",
-                    dstFactor: "one",
-                    operation: "add"
-                }
-            }]
-        });
-
-        const deferredBasicUniformBufferBindGroupSize = this.deferredBasicUniformBufferBindGroupSize = 16 * 2;
-        this.deferredBasicUniformBufferBindGroupOffset = 256;
-        const deferredBasicUniformBufferSize = this.lights.numLights * this.deferredBasicUniformBufferBindGroupOffset;
-
-        const deferredBasicUniformBuffer = this.deferredBasicUniformBuffer = this.device.createBuffer({
-            size: deferredBasicUniformBufferSize,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
-
-        this.deferredBasicUniformBindGroups = new Array(this.lights.numLights);
-
-        for (let i = 0; i < this.lights.numLights; i++) {
-            this.deferredBasicUniformBindGroups[i] = this.device.createBindGroup({
-                layout: this.dynamicUniformBufferBindGroupLayout,
-                bindings: [
-                    {
-                        binding: 0,
-                        resource: {
-                            buffer: deferredBasicUniformBuffer,
-                            offset: i * this.deferredBasicUniformBufferBindGroupOffset,
-                            size: deferredBasicUniformBufferBindGroupSize
-                        }
-                    }
-                ]
-            });
-        }
-    }
-
     setupDeferredLightLoopPipeline() {
         // share camera uniform buffer
 
@@ -1147,8 +1052,6 @@ export default class DeferredRenderer {
 
         const commandEncoder = this.device.createCommandEncoder({});
 
-        // this.lights.update();
-
         // draw geometry, write gbuffers
 
         const passEncoder = commandEncoder.beginRenderPass(this.renderPassDescriptor);
@@ -1186,33 +1089,6 @@ export default class DeferredRenderer {
         quadPassEncoder.draw(6, 1, 0, 0);
         quadPassEncoder.endPass();
 
-        this.device.getQueue().submit([commandEncoder.finish()]);
-    }
-
-    renderDeferredBasic(commandEncoder) {
-        this.lights.update();
-
-        const swapChainTexture = this.swapChain.getCurrentTexture();
-
-        this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
-
-        this.deferredBasicUniformBuffer.setSubData(0, this.lights.data);
-
-        this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
-        
-        const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
-        quadPassEncoder.setPipeline(this.deferredBasicPipeline);
-        quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
-        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
-        quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
-
-        for (let i = 0; i < this.lights.numLights; i++) {
-            quadPassEncoder.setBindGroup(2, this.deferredBasicUniformBindGroups[i]);
-
-            quadPassEncoder.draw(6, 1, 0, 0);
-        }
-
-        quadPassEncoder.endPass();
         this.device.getQueue().submit([commandEncoder.finish()]);
     }
 
