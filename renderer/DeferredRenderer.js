@@ -446,7 +446,8 @@ export default class DeferredRenderer {
         const device = this.device = await adapter.requestDevice({});
 
         // TODO: move this to local
-        const glslangModule = await import('https://unpkg.com/@webgpu/glslang@0.0.7/web/glslang.js');
+        // const glslangModule = await import('https://unpkg.com/@webgpu/glslang@0.0.7/web/glslang.js');
+        const glslangModule = await import('../third_party/glslang.js');
         const glslang = this.glslang = await glslangModule.default();
 
         const canvas = this.canvas;
