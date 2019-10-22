@@ -1,9 +1,4 @@
 import Renderer from './renderer/DeferredRenderer.js';
-// import Renderer from './renderer/ForwardRenderer.js';
-// import DeferredRenderer from './renderer/TestRT.js';
-
-
-
 
 (async function () {
     

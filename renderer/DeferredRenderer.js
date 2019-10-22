@@ -26,14 +26,13 @@ void main() {
 const fragmentShaderGBufferDebugViewGLSL = `#version 450
 
 #define NUM_GBUFFERS 3
-// #define POSITION_ID 0
-// #define NORMAL_ID 1
-// #define ALBEDOMAP_ID 2
 
 #define A 3.0
 #define B 0.5
 
 layout(set = 0, binding = 0) uniform sampler quadSampler;
+
+// Layered texture array sampling is not supported for now
 // layout(set = 0, binding = 1) uniform texture2D gbufferTexture[NUM_GBUFFERS];
 layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
 layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
@@ -48,7 +47,6 @@ layout(location = 0) in vec2 fragUV;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-
     // fragUV.y > A * (fragUV.x - i / NUM_GBUFFERS) + B
 
     float o = uniforms.debugViewOffset;
@@ -112,10 +110,8 @@ void main() {
         uniforms.lightColor * pow(1.0 - distance / uniforms.lightRadius, 2.0) *
         (
             albedo * lambert + 
-            vec3(1,1,1) * specular  // Assume white specular, modify if you add more specular info
+            vec3(1,1,1) * specular  // Assume white specular color, modify if you add more specular info
         ), 1);
-
-    // outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
 }
 `;
 
@@ -144,10 +140,6 @@ layout(std430, set = 2, binding = 0) buffer LightBuffer {
     LightData data[];
 } lights;
 
-// TODO:
-// Tile light id entries
-// compact align or maxlights * safefactor
-
 layout(location = 0) in vec2 fragUV;
 layout(location = 0) out vec4 outColor;
 
@@ -157,7 +149,6 @@ void main() {
     vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
     vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
 
-    
     vec3 V = normalize(camera.position.xyz - position);
 
     vec3 finalColor = vec3(0);
@@ -184,15 +175,12 @@ void main() {
 
     }
 
-    // finalColor += vec3(0, 0, 0.5);
-
     outColor = vec4(finalColor, 1);
 }
 `;
 
 const fragmentShaderDeferredShadingTiledLightDebugGLSL = `#version 450
 
-// TODO: include 
 #define NUM_LIGHTS $1
 #define NUM_TILES $2
 #define TILE_COUNT_X $3
@@ -216,17 +204,11 @@ layout(location = 0) out vec4 outColor;
 void main() {
     vec2 tileScale = vec2(1.0 / TILE_COUNT_X, 1.0 / TILE_COUNT_Y);
     ivec2 tileCoord = ivec2(floor( fragUV / tileScale ));
-    // ivec2 tileCoord = ivec2(floor( vec2(fragUV.x, 1.0-fragUV.y) / tileScale ));
     int tileId = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
-    // float t = float(tileLightId.data[tileId].count) / 5.0;
     float t = float(tileLightId.data[tileId].count) / ( float(NUM_TILE_LIGHT_SLOT) );
     vec3 color = vec3(4.0 * t - 2.0, t < 0.5 ? 4.0 * t: 4.0 - 4.0 * t , 2.0 - 4.0 * t);
     outColor = vec4(color, 1);
-
-    // for (int i = 0, len = tileLightId.data[tileId].count; i < len; i++) {
-    //     tileLightId.data[tileId].lightId[i]
-    // }
 }
 `;
 
@@ -389,11 +371,10 @@ async function createTextureFromImage(device, src, usage) {
 
     device.getQueue().submit([commandEncoder.finish()]);
 
-    // this.texture = texture;
     return texture;
 }
 
-const quadVertexSize = 4 * 6;   // padding?
+const quadVertexSize = 4 * 6;
 const quadUVOffset = 4 * 4;
 const fullScreenQuadArray = new Float32Array([
     // float4 position, float2 uv
@@ -409,7 +390,7 @@ export default class DeferredRenderer {
     constructor(canvas) {
         this.canvas = canvas;
 
-        this.drawableLists = [];    // {renderpass: GPURenderPass, drawables: []}
+        this.drawableLists = [];
 
         this.camera = new Camera(canvas);
 
@@ -429,9 +410,6 @@ export default class DeferredRenderer {
         const i = 3;
         this.renderMode = this.renderModeLists[i];
         this.curRenderModeFunc = this.renderFuncs[this.renderMode];
-
-        // this.curRenderModeFunc = this.renderGBufferDebugView;
-        // this.curRenderModeFunc = this.renderDeferredBasic;
     }
 
     onChangeRenderMode(v) {
@@ -445,7 +423,6 @@ export default class DeferredRenderer {
         const adapter = await navigator.gpu.requestAdapter();
         const device = this.device = await adapter.requestDevice({});
 
-        // TODO: move this to local
         // const glslangModule = await import('https://unpkg.com/@webgpu/glslang@0.0.7/web/glslang.js');
         const glslangModule = await import('../third_party/glslang.js');
         const glslang = this.glslang = await glslangModule.default();
@@ -461,8 +438,6 @@ export default class DeferredRenderer {
         WriteGBufferMaterial.setup(device);
 
         const matrixSize = 4 * 16;  // 4x4 matrix
-        // const offset = 256; // uniformBindGroup offset must be 256-byte aligned
-        // const uniformBufferSize = offset + matrixSize;
         const uniformBufferSize = 2 * matrixSize;
 
         const uniformBuffer = this.uniformBuffer = device.createBuffer({
@@ -501,7 +476,7 @@ export default class DeferredRenderer {
                 stencilFront: {},
                 stencilBack: {},
             },
-            // vertexInput: this.sponza.vertexInput,
+
             vertexInput: this.drawableLists[0].geometry.vertexInput,
 
             rasterizationState: {
@@ -546,7 +521,8 @@ export default class DeferredRenderer {
         // 10-11-2019 Unfortunately 
         // Currently Dawn does not support layered rendering.
         // https://cs.chromium.org/chromium/src/third_party/dawn/src/dawn_native/CommandEncoder.cpp?l=264
-        // Sample from depth is not supported either
+        // Might be a bit painful when you change number of gbuffer as you need to modify that in shader
+        // Though you could have some helper function to inject strings that declares textures to shader
 
         this.gbufferTextures = [
             device.createTexture({
@@ -590,12 +566,9 @@ export default class DeferredRenderer {
             }),
         ];
 
-
-        // const renderPassDescriptor = {
         this.renderPassDescriptor = {
             colorAttachments: [
                 {
-                    // attachment: colorAttachment0,
                     attachment: this.gbufferTextures[0].createView(),
                     loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
                     storeOp: "store",
@@ -738,7 +711,6 @@ export default class DeferredRenderer {
         });
 
         this.setupGBufferDebugViewPipeline();
-        // this.setupDeferredBasicPipeline();
         this.setupDeferredLightLoopPipeline();
         this.setupDeferredTiledLightDebugPipeline();
         this.setupDeferredLightCullingPipeline();
@@ -816,7 +788,6 @@ export default class DeferredRenderer {
     }
 
     setupDeferredLightLoopPipeline() {
-        // share camera uniform buffer
 
         const deferredLightLoopPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
             this.quadUniformsBindGroupLayout,
@@ -877,8 +848,6 @@ export default class DeferredRenderer {
 
     setupDeferredTiledLightDebugPipeline() {
         const deferredTiledLightDebugPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
-            // this.quadUniformsBindGroupLayout,
-            // this.uniformBufferBindGroupLayout,
             this.lightCulling.storageBufferBindGroupLayout
         ] });
         this.deferredTiledLightDebugPipeline = this.device.createRenderPipeline({
@@ -1011,15 +980,12 @@ export default class DeferredRenderer {
             const meshes = values[0];
 
             // build mesh, drawable list here
-            // const geometry = this.sponza = new Geometry(device);
             const geometry = new Geometry(device);
             geometry.fromObjMesh(meshes['obj']);
 
             const albedoMap = values[1];
-            // console.log(albedoMap);
 
             const normalMap = values[2];
-            // console.log('normalmap: ', normalMap);
 
             const sampler = device.createSampler({
                 addressModeU: "repeat",
@@ -1038,15 +1004,10 @@ export default class DeferredRenderer {
 
 
     async setupScene(device) {
-
         await Promise.all([
             this.loadModel('models/sponza.obj', 'models/color.jpg', 'models/normal.png'),
             this.loadModel('models/di.obj', 'models/di.png', 'models/di-n.png'),
         ]);
-
-        // // test transformation
-        // const d = this.drawableLists[1];
-        // d.transform.setTranslation(vec3.fromValues(0, 2, 4));
     }
 
     frame() {
@@ -1094,7 +1055,7 @@ export default class DeferredRenderer {
     }
 
     renderDeferredLightLoop(commandEncoder) {
-        this.lightCulling.update();     // TODO: only update light position
+        this.lightCulling.update();     // TODO: only update light position (might have a separate compute shader that only do that)
 
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
@@ -1120,15 +1081,11 @@ export default class DeferredRenderer {
 
         const swapChainTexture = this.swapChain.getCurrentTexture();
 
-        // this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
-
         this.renderFullScreenPassDescriptor.colorAttachments[0].attachment = swapChainTexture.createView();
         
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
         quadPassEncoder.setPipeline(this.deferredTiledLightDebugPipeline);
         quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
-        // quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
-        // quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
         quadPassEncoder.setBindGroup(0, this.lightCulling.tileLightIdBufferBindGroup);
 
         quadPassEncoder.draw(6, 1, 0, 0);

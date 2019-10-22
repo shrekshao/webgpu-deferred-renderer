@@ -14,9 +14,6 @@ const computeShaderCode = `#version 450
 
 #define TILE_SIZE $6
 
-
-// #define LIGHT_POSITION_TILE_TEST
-
 struct LightData
 {
     vec4 position;
@@ -55,6 +52,7 @@ layout(std430, set = 2, binding = 0) buffer TileLightIdBuffer {
 
 
 // TODO: tile/cluster frustum plane could be generated using another compute pass
+// for better performance. The new storage buffer could look like this
 // // Tile plane info
 // // could be precomputed by another compute pass
 // struct TileInfo
@@ -77,32 +75,12 @@ void main() {
     lightArrays.data[gl_GlobalInvocationID.x].position.y  = position.y;
 
 
-#ifdef LIGHT_POSITION_TILE_TEST
-    // Testing: light tile assignment -----------------------
-
-    vec4 p = uniforms.projectionMatrix * uniforms.viewMatrix * vec4(position, 1);
-    p /= p.w;   // in NDC
-
-    if (p.x > 1 || p.x < -1 || p.y > 1 || p.y < -1 || p.z < -1 || p.z > 1) return;
-
-    vec2 tileScale = vec2(2.0 / TILE_COUNT_X, 2.0 / TILE_COUNT_Y);
-
-    ivec2 tileCoord = ivec2(floor( (p.xy - vec2(-1, -1)) / tileScale ));
-    int tileId = tileCoord.x + tileCoord.y * TILE_COUNT_X;
-
-    if (tileId < 0 || tileId >= NUM_TILES) return;
-
-    int offset = atomicAdd(tileLightId.data[tileId].count, 1);
-
-    if (offset >= NUM_TILE_LIGHT_SLOT) return;
-
-    tileLightId.data[tileId].lightId[offset] = int(gl_GlobalInvocationID.x);
-
-    // -------------------------------------------------------
-
-#else
     // Light culling
-    // TODO: view frustum culling for tile based, or aabb for cluster, etc.
+    // Implementation here is Tiled without per tile min-max depth
+    // You could also implement cluster culling
+    // Feel free to add more compute passes if necessary
+
+    // some math reference: http://www.txutxi.com/?p=444
 
     mat4 M = uniforms.projectionMatrix;
 
@@ -123,8 +101,6 @@ void main() {
     frustumPlanes[4] = vec4(0.0, 0.0, -1.0, viewNear);    // near
     frustumPlanes[5] = vec4(0.0, 0.0, 1.0, -viewFar);    // far
 
-    // for (int y = 0; y < 3; y++) {
-    //     for (int x = 0; x < 3; x++) {
     for (int y = 0; y < TILE_COUNT_Y; y++) {
         for (int x = 0; x < TILE_COUNT_X; x++) {
 
@@ -134,9 +110,6 @@ void main() {
             vec2 floorCoord = 2.0 * vec2(tilePixel0Idx) / uniforms.fullScreenSize.xy - vec2(1.0);  // -1, 1
             vec2 ceilCoord = 2.0 * vec2(tilePixel0Idx + ivec2(TILE_SIZE)) / uniforms.fullScreenSize.xy - vec2(1.0);  // -1, 1
 
-            
-            // float viewNear = -1.0;
-            // float viewFar = -1000.0;
             vec2 viewFloorCoord = vec2( (- viewNear * floorCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * floorCoord.y - M[2][1] * viewNear) / M[1][1] );
             vec2 viewCeilCoord = vec2( (- viewNear * ceilCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * ceilCoord.y - M[2][1] * viewNear) / M[1][1] );
 
@@ -148,7 +121,6 @@ void main() {
             float dp = 0.0;     //dot product
 
             for (int i = 0; i < 6; i++)
-            // for (int i = 0; i < 4; i++)
             {
                 dp += min(0.0, dot(
                     vec4( 
@@ -173,8 +145,6 @@ void main() {
             }
         }
     }
-#endif
-    
 }
 `;
 
@@ -213,7 +183,6 @@ export default class LightCulling {
         });
 
         const lightData = new Float32Array(arrayBuffer);
-        // const lightData = new Float32Array(this.lightDataStride * this.numLights);
 
         let offset = 0;
         for (let i = 0; i < this.numLights; i++) {
@@ -231,26 +200,8 @@ export default class LightCulling {
             // radius
             // tmpVec4[3] = 4.0;
             tmpVec4[3] = 2.0;
-            // tmpVec4[3] = 0.1;
             this.setV4(lightData, offset + 4, tmpVec4);
         }
-
-        // lightData[0] = 0;
-        // lightData[1] = 2;
-        // lightData[2] = 0;
-        // lightData[3] = 1;
-
-        // // lightData[8] = 5;
-        // // lightData[9] = 4;
-        // // lightData[10] = -2;
-        // // lightData[11] = 1;
-
-        // lightData[8] = -5;
-        // lightData[9] = 14;
-        // lightData[10] = 2;
-        // lightData[11] = 1;
-
-        // new Float32Array(arrayBuffer).set(lightData);
 
         // Unmap buffer so that it can be used later for copy.
         lightDataGPUBuffer.unmap();
@@ -319,9 +270,8 @@ export default class LightCulling {
         this.numTiles = this.tileCount[0] * this.tileCount[1];
 
         // numLights slot + 1 (for count)
-        // this.tileLightSlot = Math.ceil(this.numLights * 0.1);    // safe factor
-        // this.tileLightSlot = Math.max( 127, Math.ceil(this.numLights * 0.1) );    // safe factor
         const safeFactor = 0.1;
+        // This is a magic number.
         this.tileLightSlot = Math.max( 127, Math.ceil(this.numLights * safeFactor / 128) * 128 - 1 );
         this.tileLightIdBufferSize = (this.tileLightSlot + 1) * this.numTiles;
         this.tileLightIDBufferSizeInByte = this.tileLightIdBufferSize * 4;
@@ -330,14 +280,13 @@ export default class LightCulling {
         console.log('Tile light slots: ' + this.tileLightSlot);
         console.log('tiles ' + this.numTiles);
         // Easy approach
-        // each tile has numLights (max) entry for light id
-        // use atmoicAdd to trace offset for each tile (avoid implementing parallel reduction)
+        // use atmoicAdd to trace offset for each tile's light id array
+        // (avoid implementing parallel reduction)
         const [tileLightIdGPUBuffer, tileLightIdArrayBuffer] = await this.device.createBufferMappedAsync({
             size: this.tileLightIDBufferSizeInByte,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        // const tileLightIdData = new Float32Array(tileLightIdArrayBuffer);
         const tileLightIdData = this.tileLightIdData = new Int32Array(tileLightIdArrayBuffer);
         tileLightIdData.fill(0);
 
@@ -355,12 +304,6 @@ export default class LightCulling {
               },
             ]
         });
-
-
-        // console.log(computeShaderCode.replace("$1", this.numLights));
-        // console.log(
-        //     replaceArray(computeShaderCode, ["$1", "$2"], [this.numLights, this.tileCount[0] * this.tileCount[1]])
-        // );
 
         this.lightCullingComputePipeline = this.device.createComputePipeline({
             layout: this.device.createPipelineLayout({
@@ -393,15 +336,15 @@ export default class LightCulling {
     }
 
     update() {
-        // mat4.multiply(tmpMat4, this.camera.projectionMatrix, this.camera.viewMatrix);
-        // this.uniformBuffer.setSubData(32, tmpMat4);
         this.uniformBuffer.setSubData(32, this.camera.viewMatrix);
-        // this.uniformBuffer.setSubData(96, this.camera.projectionMatrix);
+        // projectionMatrix generated by gl-matrix is in right-handed coordinates.
+        // we flipped it on y to make it work with the webgpu left handed coordinate system.
+        // we reset it here to make sure the light culling math are all done in right handed system.
         mat4.scale(tmpMat4, this.camera.projectionMatrix, vec3.fromValues(1, -1, 1));
         this.uniformBuffer.setSubData(96, tmpMat4);
 
-        this.tileLightIdGPUBuffer.setSubData(0, this.tileLightIdData);  // temp clear
-        // this.tileLightIdGPUBuffer.setSubData(0, this.tileLightIdClearData);  // temp clear
+        // clear
+        this.tileLightIdGPUBuffer.setSubData(0, this.tileLightIdData);
 
         const commandEncoder = this.device.createCommandEncoder();
 

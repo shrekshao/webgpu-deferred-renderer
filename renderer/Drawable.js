@@ -18,21 +18,15 @@ export default class Drawable {
                 resource: {
                     buffer: uniformBuffer,
                     offset: 0,
-                    // size: this.transform.modelMatrix.byteSize    // size of a mat4
                     size: 2 * 4 * 16    // this needs shader string stiching to fully make sense
                 }
             }].concat(this.material.bindings)
         });
     }
 
-    // updateTransform(uniformBuffer) {
-    //     if (this.transform.needUpdate()) {
-    //         uniformBuffer.setSubData(0, this.transform.modelMatrix);
-    //     }
-    // }
-
     draw(passEncoder) {
-        // TODO: this is not enough (need dynamic bind group layout and prestore all data in one pass)
+        // TODO: this is not enough (might need bind group layout with dynamic offset and prestore all data in one pass)
+        // Current implementation won't handle transform of multiple object properly
         passEncoder.setBindGroup(0, this.uniformBindGroup);
 
         this.geometry.draw(passEncoder, 1);

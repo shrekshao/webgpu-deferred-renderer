@@ -17,7 +17,6 @@ export default class Camera {
         // this.eye = vec3.fromValues(0, 0.5, 0);
         // this.eye = vec3.fromValues(1.5, 0.5, 0.5);
         this.eye = vec3.fromValues(4.5, 0.5, 0.5);
-        // this.view = vec3.fromValues(0, 0, -1);
         this.view = vec3.fromValues(-1, 0, 0);
         this.up = vec3.fromValues(0, 1, 0);
 
