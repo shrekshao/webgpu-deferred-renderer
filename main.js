@@ -104,7 +104,7 @@ async function init() {
     verticesBuffer.setSubData(0, cubeVerticesArray);
 
     const uniformsBindGroupLayout = device.createBindGroupLayout({
-        bindings: [{
+        entries: [{
             binding: 0,
             visibility: 1,
             type: "uniform-buffer"

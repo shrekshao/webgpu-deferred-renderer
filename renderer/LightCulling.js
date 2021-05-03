@@ -177,12 +177,18 @@ export default class LightCulling {
 
         this.lightBufferSize = bufferSizeInByte;
 
-        const [lightDataGPUBuffer, arrayBuffer] = await this.device.createBufferMappedAsync({
+        // const [lightDataGPUBuffer, arrayBuffer] = await this.device.createBufferMappedAsync({
+        //     size: bufferSizeInByte,
+        //     usage: GPUBufferUsage.STORAGE,
+        // });
+
+        const lightDataGPUBuffer = this.device.createBuffer({
             size: bufferSizeInByte,
             usage: GPUBufferUsage.STORAGE,
+            mappedAtCreation: true,
         });
 
-        const lightData = new Float32Array(arrayBuffer);
+        const lightData = new Float32Array(lightDataGPUBuffer.getMappedRange());
 
         let offset = 0;
         for (let i = 0; i < this.numLights; i++) {
@@ -208,7 +214,7 @@ export default class LightCulling {
         this.lightDataGPUBuffer = lightDataGPUBuffer;
 
         this.storageBufferBindGroupLayout = this.device.createBindGroupLayout({
-            bindings: [
+            entries: [
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
@@ -219,7 +225,7 @@ export default class LightCulling {
 
         this.lightBufferBindGroup = this.device.createBindGroup({
             layout: this.storageBufferBindGroupLayout,
-            bindings: [
+            entries: [
               {
                 binding: 0,
                 resource: {
@@ -241,7 +247,7 @@ export default class LightCulling {
         
 
         const uniformBufferBindGroupLayout = this.device.createBindGroupLayout({
-            bindings: [
+            entries: [
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
@@ -252,7 +258,7 @@ export default class LightCulling {
 
         this.uniformBindGroup = this.device.createBindGroup({
             layout: uniformBufferBindGroupLayout,
-            bindings: [
+            entries: [
               {
                 binding: 0,
                 resource: {

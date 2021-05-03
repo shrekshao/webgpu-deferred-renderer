@@ -13,14 +13,16 @@ export default class Drawable {
 
         this.uniformBindGroup = device.createBindGroup({
             layout: this.material.uniformsBindGroupLayout,
-            bindings: [{
-                binding: 0,
-                resource: {
-                    buffer: uniformBuffer,
-                    offset: 0,
-                    size: 2 * 4 * 16    // this needs shader string stiching to fully make sense
+            entries: [
+                {
+                    binding: 0,
+                    resource: {
+                        buffer: uniformBuffer,
+                        offset: 0,
+                        size: 2 * 4 * 16    // this needs shader string stiching to fully make sense
+                    }
                 }
-            }].concat(this.material.bindings)
+            ].concat(this.material.bindings)
         });
     }
 

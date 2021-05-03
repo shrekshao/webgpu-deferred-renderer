@@ -19,72 +19,126 @@ export default class Geometry {
         this.indices = indices;
 
         this.vertexInput = {
-            indexFormat: "uint32",
+            // indexFormat: "uint32",
             vertexBuffers: [
                 {
-                    stride: 4 * 3,
+                    arrayStride: 4 * 3,
                     stepMode: "vertex",
-                    attributeSet: [{
+                    attributes: [{
                         // position
                         shaderLocation: 0,
                         offset: 0,
-                        format: "float3"
+                        format: "float32x3"
                     }]
                 },
                 {
-                    stride: 4 * 3,
+                    arrayStride: 4 * 3,
                     stepMode: "vertex",
-                    attributeSet: [{
+                    attributes: [{
                         // normal
                         shaderLocation: 1,
                         offset: 0,
-                        format: "float3"
+                        format: "float32x3"
                     }]
                 },
                 {
-                    stride: 4 * 2,
+                    arrayStride: 4 * 2,
                     stepMode: "vertex",
-                    attributeSet: [{
+                    attributes: [{
                         // uv
                         shaderLocation: 2,
                         offset: 0,
-                        format: "float2"
+                        format: "float32x2"
                     }]
                 }
             ],
         };
+
+        // this.vertexBuffers = [
+        //     {
+        //       arrayStride: Float32Array.BYTES_PER_ELEMENT * 8,
+        //       attributes: [
+        //         {
+        //           // position
+        //           shaderLocation: 0,
+        //           offset: 0,
+        //           format: 'float32x3',
+        //         },
+        //         {
+        //           // normal
+        //           shaderLocation: 1,
+        //           offset: Float32Array.BYTES_PER_ELEMENT * 3,
+        //           format: 'float32x3',
+        //         },
+        //         {
+        //           // uv
+        //           shaderLocation: 2,
+        //           offset: Float32Array.BYTES_PER_ELEMENT * 6,
+        //           format: 'float32x2',
+        //         },
+        //       ],
+        //     },
+        //   ];
 
         // Complex scene management shall update when in drawing list
         this.verticesBuffer = this.device.createBuffer({
             size: this.vertices.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-        this.verticesBuffer.setSubData(0, this.vertices);
+        // this.verticesBuffer.setSubData(0, this.vertices);
+        this.device.queue.writeBuffer(
+            this.verticesBuffer,
+            0,
+            this.vertices.buffer,
+            this.vertices.byteOffset,
+            this.vertices.byteLength
+        );
 
         this.normalsBuffer = this.device.createBuffer({
             size: this.normals.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-        this.normalsBuffer.setSubData(0, this.normals);
+        // this.normalsBuffer.setSubData(0, this.normals);
+        this.device.queue.writeBuffer(
+            this.normalsBuffer,
+            0,
+            this.normals.buffer,
+            this.normals.byteOffset,
+            this.normals.byteLength
+        );
 
         this.uvsBuffer = this.device.createBuffer({
             size: this.uvs.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-        this.uvsBuffer.setSubData(0, this.uvs);
+        // this.uvsBuffer.setSubData(0, this.uvs);
+        this.device.queue.writeBuffer(
+            this.uvsBuffer,
+            0,
+            this.uvs.buffer,
+            this.uvs.byteOffset,
+            this.uvs.byteLength
+        );
 
         this.indicesBuffer = this.device.createBuffer({
             size: this.indices.byteLength,
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
         });
-        this.indicesBuffer.setSubData(0, this.indices);
+        // this.indicesBuffer.setSubData(0, this.indices);
+        this.device.queue.writeBuffer(
+            this.indicesBuffer,
+            0,
+            this.indices.buffer,
+            this.indices.byteOffset,
+            this.indices.byteLength
+        );
     }
 
     draw(passEncoder, instanceCount) {
         passEncoder.setVertexBuffer(0, this.verticesBuffer);
         passEncoder.setVertexBuffer(1, this.normalsBuffer);
         passEncoder.setVertexBuffer(2, this.uvsBuffer);
-        passEncoder.setIndexBuffer(this.indicesBuffer);
+        passEncoder.setIndexBuffer(this.indicesBuffer, "uint32");
 
         // indexed
         passEncoder.drawIndexed(this.indices.length, instanceCount, 0, 0, 0);
