@@ -109,6 +109,8 @@ fn main([[location(0)]] fragPosition: vec3<f32>,
     output.position = vec4<f32>(fragPosition, 1.0);
     output.normal = vec4<f32>(applyNormalMap(fragNormal, textureSample(normalMap, mySampler, fragUV).xyz), 1.0);
     output.albedo = textureSample(albedoMap, mySampler, fragUV);
+    // output.albedo = textureSample(albedoMap, mySampler, vec2<f32>(fragUV.x, 1.0-fragUV.y));
+    // output.albedo = vec4<f32>(fragUV.x, fragUV.y, 0.0, 1.0);
     return output;
 }
 `;
@@ -127,8 +129,6 @@ export default class WriteGBufferMaterial {
                         // minBindingSize: 4,
                       },
                 },
-
-                
                 {
                     binding: 1,
                     visibility: GPUShaderStage.FRAGMENT,

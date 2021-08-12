@@ -154,9 +154,8 @@ function getCount(t, f) {
 
 export default class LightCulling {
 
-    constructor(device, glslang) {
+    constructor(device) {
         this.device = device;
-        this.glslang = glslang;
     }
 
     async init(canvas, camera) {
@@ -176,11 +175,6 @@ export default class LightCulling {
         const bufferSizeInByte = 4 * this.lightDataStride * this.numLights;
 
         this.lightBufferSize = bufferSizeInByte;
-
-        // const [lightDataGPUBuffer, arrayBuffer] = await this.device.createBufferMappedAsync({
-        //     size: bufferSizeInByte,
-        //     usage: GPUBufferUsage.STORAGE,
-        // });
 
         const lightDataGPUBuffer = this.device.createBuffer({
             size: bufferSizeInByte,
@@ -218,7 +212,9 @@ export default class LightCulling {
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
-                    type: "storage-buffer"
+                    buffer: {
+                        type: "storage"
+                    }
                 },
             ]
         });
@@ -240,18 +236,40 @@ export default class LightCulling {
             size: uniformBufferSize,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-        uniformBuffer.setSubData(0, this.extentMin);
-        uniformBuffer.setSubData(16, this.extentMax);
+        // uniformBuffer.setSubData(0, this.extentMin);
+        // uniformBuffer.setSubData(16, this.extentMax);
+        this.device.queue.writeBuffer(
+            uniformBuffer,
+            0,
+            this.extentMin.buffer,
+            this.extentMin.byteOffset,
+            this.extentMin.byteLength,
+        );
+        this.device.queue.writeBuffer(
+            uniformBuffer,
+            16,
+            this.extentMax.buffer,
+            this.extentMax.byteOffset,
+            this.extentMax.byteLength,
+        );
         vec4.set(tmpVec4, canvas.width, canvas.height, 0, 0);
-        uniformBuffer.setSubData(160, tmpVec4);
-        
+        // uniformBuffer.setSubData(160, tmpVec4);
+        this.device.queue.writeBuffer(
+            uniformBuffer,
+            160,
+            tmpVec4.buffer,
+            tmpVec4.byteOffset,
+            tmpVec4.byteLength,
+        );
 
         const uniformBufferBindGroupLayout = this.device.createBindGroupLayout({
             entries: [
                 {
                     binding: 0,
                     visibility: GPUShaderStage.COMPUTE,
-                    type: "uniform-buffer"
+                    buffer: {
+                        type: 'uniform'
+                    }
                 },
             ]
         });
@@ -288,10 +306,14 @@ export default class LightCulling {
         // Easy approach
         // use atmoicAdd to trace offset for each tile's light id array
         // (avoid implementing parallel reduction)
-        const [tileLightIdGPUBuffer, tileLightIdArrayBuffer] = await this.device.createBufferMappedAsync({
+
+        const tileLightIdGPUBuffer = this.device.createBuffer({
             size: this.tileLightIDBufferSizeInByte,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+            mappedAtCreation: true,
         });
+
+        const tileLightIdArrayBuffer = tileLightIdGPUBuffer.getMappedRange();
 
         const tileLightIdData = this.tileLightIdData = new Int32Array(tileLightIdArrayBuffer);
         tileLightIdData.fill(0);
@@ -301,7 +323,7 @@ export default class LightCulling {
 
         this.tileLightIdBufferBindGroup = this.device.createBindGroup({
             layout: this.storageBufferBindGroupLayout,
-            bindings: [
+            entries: [
               {
                 binding: 0,
                 resource: {
@@ -311,19 +333,19 @@ export default class LightCulling {
             ]
         });
 
-        this.lightCullingComputePipeline = this.device.createComputePipeline({
-            layout: this.device.createPipelineLayout({
-              bindGroupLayouts: [this.storageBufferBindGroupLayout, uniformBufferBindGroupLayout, this.storageBufferBindGroupLayout]
-            }),
-            computeStage: {
-              module: this.device.createShaderModule({
-                code: this.glslang.compileGLSL(
-                    replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4", "$5", "$6"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot, this.tileSize]),
-                    "compute")
-              }),
-              entryPoint: "main"
-            }
-        });
+        // this.lightCullingComputePipeline = this.device.createComputePipeline({
+        //     layout: this.device.createPipelineLayout({
+        //       bindGroupLayouts: [this.storageBufferBindGroupLayout, uniformBufferBindGroupLayout, this.storageBufferBindGroupLayout]
+        //     }),
+        //     computeStage: {
+        //       module: this.device.createShaderModule({
+        //         code: this.glslang.compileGLSL(
+        //             replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4", "$5", "$6"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot, this.tileSize]),
+        //             "compute")
+        //       }),
+        //       entryPoint: "main"
+        //     }
+        // });
 
     }
 

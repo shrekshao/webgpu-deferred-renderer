@@ -18,67 +18,35 @@ export default class Geometry {
         this.uvs = uvs;
         this.indices = indices;
 
-        this.vertexInput = {
-            // indexFormat: "uint32",
-            vertexBuffers: [
-                {
-                    arrayStride: 4 * 3,
-                    stepMode: "vertex",
-                    attributes: [{
-                        // position
-                        shaderLocation: 0,
-                        offset: 0,
-                        format: "float32x3"
-                    }]
-                },
-                {
-                    arrayStride: 4 * 3,
-                    stepMode: "vertex",
-                    attributes: [{
-                        // normal
-                        shaderLocation: 1,
-                        offset: 0,
-                        format: "float32x3"
-                    }]
-                },
-                {
-                    arrayStride: 4 * 2,
-                    stepMode: "vertex",
-                    attributes: [{
-                        // uv
-                        shaderLocation: 2,
-                        offset: 0,
-                        format: "float32x2"
-                    }]
-                }
-            ],
-        };
-
-        // this.vertexBuffers = [
-        //     {
-        //       arrayStride: Float32Array.BYTES_PER_ELEMENT * 8,
-        //       attributes: [
-        //         {
-        //           // position
-        //           shaderLocation: 0,
-        //           offset: 0,
-        //           format: 'float32x3',
-        //         },
-        //         {
-        //           // normal
-        //           shaderLocation: 1,
-        //           offset: Float32Array.BYTES_PER_ELEMENT * 3,
-        //           format: 'float32x3',
-        //         },
-        //         {
-        //           // uv
-        //           shaderLocation: 2,
-        //           offset: Float32Array.BYTES_PER_ELEMENT * 6,
-        //           format: 'float32x2',
-        //         },
-        //       ],
-        //     },
-        //   ];
+        this.vertexBuffers = [
+            {
+                arrayStride: Float32Array.BYTES_PER_ELEMENT * 3,
+                attributes: [{
+                    // position
+                    shaderLocation: 0,
+                    offset: 0,
+                    format: "float32x3"
+                }]
+            },
+            {
+                arrayStride: Float32Array.BYTES_PER_ELEMENT * 3,
+                attributes: [{
+                    // normal
+                    shaderLocation: 1,
+                    offset: 0,
+                    format: "float32x3"
+                }]
+            },
+            {
+                arrayStride: Float32Array.BYTES_PER_ELEMENT * 2,
+                attributes: [{
+                    // uv
+                    shaderLocation: 2,
+                    offset: 0,
+                    format: "float32x2"
+                }]
+            }
+          ];
 
         // Complex scene management shall update when in drawing list
         this.verticesBuffer = this.device.createBuffer({

@@ -29,210 +29,259 @@ fn main([[location(0)]] position : vec4<f32>,
 `;
 
 const fragmentShaderGBufferDebugView = `
-[[group(0), binding(0)]] var mySampler: sampler;
+// [[group(0), binding(0)]] var mySampler: sampler;
 [[group(0), binding(1)]] var gBufferPosition: texture_2d<f32>;
 [[group(0), binding(2)]] var gBufferNormal: texture_2d<f32>;
 [[group(0), binding(3)]] var gBufferAlbedo: texture_2d<f32>;
 
 [[stage(fragment)]]
-fn main([[location(0)]] fragUV : vec2<f32>)
+fn main([[builtin(position)]] coord : vec4<f32>,
+        [[location(0)]] fragUV : vec2<f32>)
      -> [[location(0)]] vec4<f32> {
   var result : vec4<f32>;
   var c : vec2<f32> = fragUV;
   if (c.x < 0.33333) {
-    result = textureSample(
-      gBufferPosition,
-      mySampler,
-      c
+    result = textureLoad(
+        gBufferPosition,
+        vec2<i32>(floor(coord.xy)),
+        0
     );
   } elseif (c.x < 0.66667) {
-    result = textureSample(
-      gBufferNormal,
-      mySampler,
-      c
+    result = textureLoad(
+        gBufferNormal,
+        vec2<i32>(floor(coord.xy)),
+        0
     );
     result.x = (result.x + 1.0) * 0.5;
     result.y = (result.y + 1.0) * 0.5;
     result.z = (result.z + 1.0) * 0.5;
     result.a = 1.0;
   } else {
-    result = textureSample(
-      gBufferAlbedo,
-      mySampler,
-      c
+    // result = textureSample(
+    //   gBufferAlbedo,
+    //   mySampler,
+    //   c
+    // );
+    result = textureLoad(
+        gBufferAlbedo,
+        vec2<i32>(floor(coord.xy)),
+        0
     );
   }
+//   result = textureSample(
+//     gBufferAlbedo,
+//     mySampler,
+//     c
+//   );
   return result;
 }
 `;
 
-const vertexShaderFullScreenQuadGLSL = `#version 450
-layout(location = 0) in vec4 position;
-layout(location = 1) in vec2 uv;
+// const vertexShaderFullScreenQuadGLSL = `#version 450
+// layout(location = 0) in vec4 position;
+// layout(location = 1) in vec2 uv;
 
-layout(location = 0) out vec2 fragUV;
+// layout(location = 0) out vec2 fragUV;
 
-void main() {
-    gl_Position = position;
-    fragUV = uv;
-}
-`;
+// void main() {
+//     gl_Position = position;
+//     fragUV = uv;
+// }
+// `;
 
-const fragmentShaderGBufferDebugViewGLSL = `#version 450
+// const fragmentShaderGBufferDebugViewGLSL = `#version 450
 
-#define NUM_GBUFFERS 3
+// #define NUM_GBUFFERS 3
 
-#define A 3.0
-#define B 0.5
+// #define A 3.0
+// #define B 0.5
 
-layout(set = 0, binding = 0) uniform sampler quadSampler;
+// layout(set = 0, binding = 0) uniform sampler quadSampler;
 
-// Layered texture array sampling is not supported for now
-// layout(set = 0, binding = 1) uniform texture2D gbufferTexture[NUM_GBUFFERS];
-layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
-layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
-layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
+// // Layered texture array sampling is not supported for now
+// // layout(set = 0, binding = 1) uniform texture2D gbufferTexture[NUM_GBUFFERS];
+// layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
+// layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
+// layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
 
-layout(set = 1, binding = 0) uniform Uniforms {
-    float debugViewOffset;
-    vec3 padding;
-} uniforms;
+// layout(set = 1, binding = 0) uniform Uniforms {
+//     float debugViewOffset;
+//     vec3 padding;
+// } uniforms;
 
-layout(location = 0) in vec2 fragUV;
-layout(location = 0) out vec4 outColor;
+// layout(location = 0) in vec2 fragUV;
+// layout(location = 0) out vec4 outColor;
 
-void main() {
-    // fragUV.y > A * (fragUV.x - i / NUM_GBUFFERS) + B
+// void main() {
+//     // fragUV.y > A * (fragUV.x - i / NUM_GBUFFERS) + B
 
-    float o = uniforms.debugViewOffset;
+//     float o = uniforms.debugViewOffset;
 
-    float r = mod( o + float(NUM_GBUFFERS) / A * (A * fragUV.x - fragUV.y + B), NUM_GBUFFERS);
-    if (r < 1)
-    {
-        outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
-    }
-    else if (r < 2)
-    {
-        outColor = texture(sampler2D(gbufferTexture1, quadSampler), fragUV);
-    }
-    else if (r < 3)
-    {
-        outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
-    }
-}
-`;
+//     float r = mod( o + float(NUM_GBUFFERS) / A * (A * fragUV.x - fragUV.y + B), NUM_GBUFFERS);
+//     if (r < 1)
+//     {
+//         outColor = texture(sampler2D(gbufferTexture0, quadSampler), fragUV);
+//     }
+//     else if (r < 2)
+//     {
+//         outColor = texture(sampler2D(gbufferTexture1, quadSampler), fragUV);
+//     }
+//     else if (r < 3)
+//     {
+//         outColor = texture(sampler2D(gbufferTexture2, quadSampler), fragUV);
+//     }
+// }
+// `;
 
-const fragmentShaderDeferredShadingOnePointLightGLSL = `#version 450
-#define NUM_GBUFFERS 3
+const fragmentShaderDeferredShadingLoopLights = `
+[[group(0), binding(0)]] var mySampler: sampler;
+[[group(0), binding(1)]] var gBufferPosition: texture_2d<f32>;
+[[group(0), binding(2)]] var gBufferNormal: texture_2d<f32>;
+[[group(0), binding(3)]] var gBufferAlbedo: texture_2d<f32>;
 
-layout(set = 0, binding = 0) uniform sampler quadSampler;
-layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
-layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
-layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
-
-layout(set = 1, binding = 0) uniform CameraUniforms {
-    vec4 position;
-} camera;
-
-layout(set = 2, binding = 0) uniform Uniforms {
-    vec4 lightPosition;
-    vec3 lightColor;
-    float lightRadius;
-} uniforms;
-
-layout(location = 0) in vec2 fragUV;
-layout(location = 0) out vec4 outColor;
-
-void main() {
-
-    vec3 position = texture(sampler2D(gbufferTexture0, quadSampler), fragUV).xyz;
-    vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
-    vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
-
-    float distance = distance(uniforms.lightPosition.xyz, position);
-    if (distance  > uniforms.lightRadius) {
-        discard;
-        return;
-    }
-
-    vec3 L = normalize(uniforms.lightPosition.xyz - position);
-    float lambert = max(dot(L, normal), 0.0);
-    vec3 V = normalize(camera.position.xyz - position);
-    vec3 H = normalize(L + V);
-    float specular = float(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
-
-    outColor = vec4(
-        uniforms.lightColor * pow(1.0 - distance / uniforms.lightRadius, 2.0) *
-        (
-            albedo * lambert + 
-            vec3(1,1,1) * specular  // Assume white specular color, modify if you add more specular info
-        ), 1);
-}
-`;
-
-const fragmentShaderDeferredShadingLoopLightsGLSL = `#version 450
-#define NUM_GBUFFERS 3
-
-#define NUM_LIGHTS $1
-
-layout(set = 0, binding = 0) uniform sampler quadSampler;
-layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
-layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
-layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
-
-layout(set = 1, binding = 0) uniform CameraUniforms {
-    vec4 position;
-} camera;
-
-struct LightData
-{
-    vec4 position;
-    vec3 color;
-    float radius;
+[[block]] struct CameraUniforms {
+    position: vec4<f32>;
 };
+[[group(1), binding(0)]] var<uniform> camera : CameraUniforms;
 
-layout(std430, set = 2, binding = 0) buffer LightBuffer {
-    LightData data[];
-} lights;
+struct LightData {
+  position : vec4<f32>;
+  color : vec3<f32>;
+  radius : f32;
+};
+[[block]] struct LightsBuffer {
+  lights: array<LightData>;
+};
+[[group(2), binding(0)]] var<storage, read> lightsBuffer: LightsBuffer;
 
-layout(location = 0) in vec2 fragUV;
-layout(location = 0) out vec4 outColor;
+// [[block]] struct Config {
+//   numLights : u32;
+// };
+// [[group(1), binding(1)]] var<uniform> config: Config;
 
-void main() {
+// [[block]] struct CanvasConstants {
+//   size: vec2<f32>;
+// };
+// [[group(2), binding(0)]] var<uniform> canvas : CanvasConstants;
 
-    vec3 position = texture(sampler2D(gbufferTexture0, quadSampler), fragUV).xyz;
-    vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
-    vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
+[[stage(fragment)]]
+fn main([[builtin(position)]] coord : vec4<f32>)
+     -> [[location(0)]] vec4<f32> {
+  var result : vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
+  var c : vec2<f32> = coord.xy / vec2<f32>($2, $3);
 
-    vec3 V = normalize(camera.position.xyz - position);
+  var position : vec3<f32> = textureSample(
+    gBufferPosition,
+    mySampler,
+    c
+  ).xyz;
 
-    vec3 finalColor = vec3(0);
+  if (position.z > 10000.0) {
+    discard;
+  }
 
-    for ( int i = 0; i < NUM_LIGHTS; i++) {
-        LightData light = lights.data[i];
+  var normal : vec3<f32> = textureSample(
+    gBufferNormal,
+    mySampler,
+    c
+  ).xyz;
 
-        float distance = distance(light.position.xyz, position);
-        if (distance  > light.radius) {
-            continue;
-        }
+  var albedo : vec3<f32> = textureSample(
+    gBufferAlbedo,
+    mySampler,
+    c
+  ).rgb;
 
-        vec3 L = normalize(light.position.xyz - position);
-        float lambert = max(dot(L, normal), 0.0);
-        vec3 H = normalize(L + V);
-        float specular = float(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+  var V: vec3<f32> = normalize(camera.position.xyz - position);
 
-        finalColor += 
-            clamp(light.color * pow(1.0 - distance / light.radius, 2.0) *
-            (
-                albedo * lambert + 
-                    vec3(1,1,1) * specular  // Assume white specular, modify if you add more specular info
-            ), vec3(0), vec3(1));
-
+  for (var i : u32 = 0u; i < $1u; i = i + 1u) {
+    var L : vec3<f32> = lightsBuffer.lights[i].position.xyz - position;
+    var distance : f32 = length(L);
+    if (distance > lightsBuffer.lights[i].radius) {
+        continue;
     }
 
-    outColor = vec4(finalColor, 1);
+    L = L / distance;
+    var lambert : f32 = max(dot(normal, L), 0.0);
+    var H: vec3<f32> = normalize(L + V);
+    var specular : f32 = sign(lambert) * pow(max(dot(H, normal), 0.0), 10.0);
+
+    result = result + clamp(lightsBuffer.lights[i].color * (
+      lambert * pow(1.0 - distance / lightsBuffer.lights[i].radius, 2.0) * albedo
+      + specular * vec3<f32>(1.0, 1.0, 1.0)
+    ), vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(1.0, 1.0, 1.0));
+  }
+
+//   // some manual ambient
+//   result = result + vec3<f32>(0.2, 0.2, 0.2);
+
+  return vec4<f32>(result, 1.0);
 }
 `;
+
+// const fragmentShaderDeferredShadingLoopLightsGLSL = `#version 450
+// #define NUM_GBUFFERS 3
+
+// #define NUM_LIGHTS $1
+
+// layout(set = 0, binding = 0) uniform sampler quadSampler;
+// layout(set = 0, binding = 1) uniform texture2D gbufferTexture0;
+// layout(set = 0, binding = 2) uniform texture2D gbufferTexture1;
+// layout(set = 0, binding = 3) uniform texture2D gbufferTexture2;
+
+// layout(set = 1, binding = 0) uniform CameraUniforms {
+//     vec4 position;
+// } camera;
+
+// struct LightData
+// {
+//     vec4 position;
+//     vec3 color;
+//     float radius;
+// };
+
+// layout(std430, set = 2, binding = 0) buffer LightBuffer {
+//     LightData data[];
+// } lights;
+
+// layout(location = 0) in vec2 fragUV;
+// layout(location = 0) out vec4 outColor;
+
+// void main() {
+
+//     vec3 position = texture(sampler2D(gbufferTexture0, quadSampler), fragUV).xyz;
+//     vec3 normal = texture(sampler2D(gbufferTexture1, quadSampler), fragUV).xyz;
+//     vec3 albedo = texture(sampler2D(gbufferTexture2, quadSampler), fragUV).rgb;
+
+//     vec3 V = normalize(camera.position.xyz - position);
+
+//     vec3 finalColor = vec3(0);
+
+//     for ( int i = 0; i < NUM_LIGHTS; i++) {
+//         LightData light = lights.data[i];
+
+//         float distance = distance(light.position.xyz, position);
+//         if (distance  > light.radius) {
+//             continue;
+//         }
+
+//         vec3 L = normalize(light.position.xyz - position);
+//         float lambert = max(dot(L, normal), 0.0);
+//         vec3 H = normalize(L + V);
+//         float specular = float(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+
+//         finalColor += 
+//             clamp(light.color * pow(1.0 - distance / light.radius, 2.0) *
+//             (
+//                 albedo * lambert + 
+//                     vec3(1,1,1) * specular  // Assume white specular, modify if you add more specular info
+//             ), vec3(0), vec3(1));
+
+//     }
+
+//     outColor = vec4(finalColor, 1);
+// }
+// `;
 
 const fragmentShaderDeferredShadingTiledLightDebugGLSL = `#version 450
 
@@ -350,95 +399,117 @@ void main() {
 `;
 
 async function createTextureFromImage(device, src, usage) {
-    // Current hacky Texture impl for WebGPU
-    // Upload texture image data to gpu by uploading data array
-    // retrieved from a 2d canvas
-
     const img = document.createElement('img');
     img.src = src;
     await img.decode();
-
-    const imageCanvas = document.createElement('canvas');
-    imageCanvas.width = img.width;
-    imageCanvas.height = img.height;
-
-    const imageCanvasContext = imageCanvas.getContext('2d');
-    imageCanvasContext.translate(0, img.height);
-    imageCanvasContext.scale(1, -1);
-    imageCanvasContext.drawImage(img, 0, 0, img.width, img.height);
-    const imageData = imageCanvasContext.getImageData(0, 0, img.width, img.height);
-    let data = null;
-
-    const rowPitch = Math.ceil(img.width * 4 / 256) * 256;
-    if (rowPitch == img.width * 4) {
-        data = imageData.data;
-    } else {
-        data = new Uint8Array(rowPitch * img.height);
-        for (let y = 0; y < canvas.height; ++y) {
-            for (let x = 0; x < canvas.width; ++x) {
-                let i = x * 4 + y * rowPitch;
-                data[i] = imageData.data[i];
-                data[i + 1] = imageData.data[i + 1];
-                data[i + 2] = imageData.data[i + 2];
-                data[i + 3] = imageData.data[i + 3];
-            }
-        }
-    }
+    const imageBitmap = await createImageBitmap(img, { imageOrientation: 'flipY' });
 
     const texture = device.createTexture({
-        size: {
-            width: img.width,
-            height: img.height,
-            depthOrArrayLayers: 1,
-        },
-        // arrayLayerCount: 1,
-        mipLevelCount: 1,
-        sampleCount: 1,
-        dimension: "2d",
-        format: "rgba8unorm",
-        usage: GPUTextureUsage.COPY_DST | usage,
+      size: [imageBitmap.width, imageBitmap.height, 1],
+    //   format: 'bgra8unorm',
+      format: 'rgba8unorm',
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.RENDER_ATTACHMENT,
     });
-
-    const textureDataBuffer = device.createBuffer({
-        size: data.byteLength,
-        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
-    });
-
-    // textureDataBuffer.setSubData(0, data);
-    device.queue.writeBuffer(
-        textureDataBuffer,
-        0,
-        data.buffer,
-        data.byteOffset,
-        data.byteLength
+    device.queue.copyExternalImageToTexture(
+      { source: imageBitmap },
+      { texture: texture },
+      [imageBitmap.width, imageBitmap.height]
     );
-
-    const commandEncoder = device.createCommandEncoder({});
-    // console.log(img.width);
-    // console.log(Math.floor((img.width * 1 * 4 + 255) / 256) * 256);
-    commandEncoder.copyBufferToTexture({
-        buffer: textureDataBuffer,
-        bytesPerRow: Math.floor((img.width * 1 * 4 + 255) / 256) * 256,
-        rowsPerImage: img.height,
-        // rowPitch: rowPitch,
-        // arrayLayer: 0,
-        // mipLevel: 0,
-        // imageHeight: 0,
-    }, {
-            texture: texture,
-            // mipLevel: 0,
-            // arrayLayer: 0,
-            // origin: { x: 0, y: 0, z: 0 }
-        }, {
-            width: img.width,
-            height: img.height,
-            depthOrArrayLayers: 1,
-        });
-
-    device.queue.submit([commandEncoder.finish()]);
-
     return texture;
 }
+// async function createTextureFromImage(device, src, usage) {
+//     // Current hacky Texture impl for WebGPU
+//     // Upload texture image data to gpu by uploading data array
+//     // retrieved from a 2d canvas
+
+//     const img = document.createElement('img');
+//     img.src = src;
+//     await img.decode();
+
+//     const imageCanvas = document.createElement('canvas');
+//     imageCanvas.width = img.width;
+//     imageCanvas.height = img.height;
+
+//     const imageCanvasContext = imageCanvas.getContext('2d');
+//     imageCanvasContext.translate(0, img.height);
+//     imageCanvasContext.scale(1, -1);
+//     imageCanvasContext.drawImage(img, 0, 0, img.width, img.height);
+//     const imageData = imageCanvasContext.getImageData(0, 0, img.width, img.height);
+//     let data = null;
+
+//     const rowPitch = Math.ceil(img.width * 4 / 256) * 256;
+//     if (rowPitch == img.width * 4) {
+//         data = imageData.data;
+//     } else {
+//         data = new Uint8Array(rowPitch * img.height);
+//         for (let y = 0; y < canvas.height; ++y) {
+//             for (let x = 0; x < canvas.width; ++x) {
+//                 let i = x * 4 + y * rowPitch;
+//                 data[i] = imageData.data[i];
+//                 data[i + 1] = imageData.data[i + 1];
+//                 data[i + 2] = imageData.data[i + 2];
+//                 data[i + 3] = imageData.data[i + 3];
+//             }
+//         }
+//     }
+
+//     const texture = device.createTexture({
+//         size: {
+//             width: img.width,
+//             height: img.height,
+//             depthOrArrayLayers: 1,
+//         },
+//         // arrayLayerCount: 1,
+//         mipLevelCount: 1,
+//         sampleCount: 1,
+//         dimension: "2d",
+//         format: "rgba8unorm",
+//         usage: GPUTextureUsage.COPY_DST | usage,
+//     });
+
+//     const textureDataBuffer = device.createBuffer({
+//         size: data.byteLength,
+//         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+//     });
+
+//     // textureDataBuffer.setSubData(0, data);
+//     device.queue.writeBuffer(
+//         textureDataBuffer,
+//         0,
+//         data.buffer,
+//         data.byteOffset,
+//         data.byteLength
+//     );
+
+//     const commandEncoder = device.createCommandEncoder({});
+//     // console.log(img.width);
+//     // console.log(Math.floor((img.width * 1 * 4 + 255) / 256) * 256);
+//     commandEncoder.copyBufferToTexture({
+//         buffer: textureDataBuffer,
+//         bytesPerRow: Math.floor((img.width * 1 * 4 + 255) / 256) * 256,
+//         rowsPerImage: img.height,
+//         // rowPitch: rowPitch,
+//         // arrayLayer: 0,
+//         // mipLevel: 0,
+//         // imageHeight: 0,
+//     }, {
+//             texture: texture,
+//             // mipLevel: 0,
+//             // arrayLayer: 0,
+//             // origin: { x: 0, y: 0, z: 0 }
+//         }, {
+//             width: img.width,
+//             height: img.height,
+//             depthOrArrayLayers: 1,
+//         });
+
+//     device.queue.submit([commandEncoder.finish()]);
+
+//     return texture;
+// }
 
 const quadVertexSize = 4 * 6;
 const quadUVOffset = 4 * 4;
@@ -494,12 +565,16 @@ export default class DeferredRenderer {
         // const glslang = this.glslang = await glslangModule.default();
 
         const canvas = this.canvas;
-        const context = canvas.getContext('gpupresent');
+        const context = this.context = canvas.getContext('webgpu');
 
-        this.swapChain = context.configureSwapChain({
+        this.swapChain = context.configure({
             device,
             format: "bgra8unorm",
         });
+        // this.swapChain = context.configureSwapChain({
+        //     device,
+        //     format: "bgra8unorm",
+        // });
 
         WriteGBufferMaterial.setup(device);
 
@@ -511,8 +586,8 @@ export default class DeferredRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
 
-        // this.lightCulling = new LightCulling(device, glslang);
-        // await this.lightCulling.init(canvas, this.camera);
+        this.lightCulling = new LightCulling(device);
+        await this.lightCulling.init(canvas, this.camera);
 
         await this.setupScene(device);
 
@@ -528,7 +603,8 @@ export default class DeferredRenderer {
                     code: WriteGBufferMaterial.vertexShader,
                 }),
                 entryPoint: "main",
-                buffers: this.drawableLists[0].geometry.vertexInput.vertexBuffers,
+                buffers: this.drawableLists[0].geometry.vertexBuffers,
+                // buffers: this.drawableLists[0].geometry.vertexInput.vertexBuffers,
             },
             fragment: {
                 module: device.createShaderModule({
@@ -586,7 +662,7 @@ export default class DeferredRenderer {
                 sampleCount: 1,
                 dimension: "2d",
                 format: "rgba32float",
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.SAMPLED
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
             }),
             device.createTexture({
                 size: {
@@ -599,7 +675,7 @@ export default class DeferredRenderer {
                 sampleCount: 1,
                 dimension: "2d",
                 format: "rgba32float",
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.SAMPLED
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
             }),
             device.createTexture({
                 size: {
@@ -612,7 +688,7 @@ export default class DeferredRenderer {
                 sampleCount: 1,
                 dimension: "2d",
                 format: "bgra8unorm",
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.SAMPLED
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING
             }),
         ];
 
@@ -665,38 +741,38 @@ export default class DeferredRenderer {
             fullScreenQuadArray.byteLength
         );
 
-        this.quadUniformsBindGroupLayout = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    sampler: {
-                        type: "filtering",
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    texture: {
-                        sampleType: 'float',
-                    }
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    texture: {
-                        sampleType: 'float',
-                    }
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    texture: {
-                        sampleType: 'float',
-                    }
-                },
-            ]
-        });
+        // this.quadUniformsBindGroupLayout = device.createBindGroupLayout({
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             sampler: {
+        //                 type: "filtering",  //f32 is not filterable
+        //             }
+        //         },
+        //         {
+        //             binding: 1,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             texture: {
+        //                 sampleType: 'float',
+        //             }
+        //         },
+        //         {
+        //             binding: 2,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             texture: {
+        //                 sampleType: 'float',
+        //             }
+        //         },
+        //         {
+        //             binding: 3,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             texture: {
+        //                 sampleType: 'float',
+        //             }
+        //         },
+        //     ]
+        // });
 
         this.uniformBufferBindGroupLayout = device.createBindGroupLayout({
             entries: [
@@ -813,44 +889,11 @@ export default class DeferredRenderer {
                     { format: 'bgra8unorm' },
                 ],
             },
-
-            
-            // depthStencil: {
-            //     depthWriteEnabled: false,
-            //     depthCompare: "always",
-            //     format: "depth24plus-stencil8",
-            // },
-
-            // primitiveTopology: "triangle-list",
-
-            // vertexInput: {
-            //     indexFormat: "uint32",
-            //     vertexBuffers: [{
-            //         stride: quadVertexSize, //padding
-            //         stepMode: "vertex",
-            //         attributeSet: [{
-            //             // position
-            //             shaderLocation: 0,
-            //             offset: 0,
-            //             format: "float4"
-            //         },
-            //         {
-            //             // uv
-            //             shaderLocation: 1,
-            //             offset: quadUVOffset,
-            //             format: "float2"
-            //         }]
-            //     }]
-            // },
-
-            // rasterizationState: {
-            //     frontFace: 'ccw',
-            //     cullMode: 'back'
-            // },
-
-            // colorStates: [{
-            //     format: "bgra8unorm",
-            // }]
+            primitive: {
+                topology: 'triangle-list',
+                // cullMode: 'none',
+                cullMode: 'back',
+            },
         });
 
         const debugViewUniformBufferSize = 16;
@@ -867,7 +910,7 @@ export default class DeferredRenderer {
                     resource: {
                         buffer: debugViewUniformBuffer,
                         offset: 0,
-                        size: debugViewUniformBufferSize
+                        // size: debugViewUniformBufferSize
                     }
                 }
             ]
@@ -877,10 +920,10 @@ export default class DeferredRenderer {
             // layout: this.quadUniformsBindGroupLayout,
             layout: this.gbufferDebugViewPipeline.getBindGroupLayout(0),
             entries: [
-                {
-                    binding: 0,
-                    resource: this.sampler,
-                },
+                // {
+                //     binding: 0,
+                //     resource: this.sampler,
+                // },
                 {
                     binding: 1,
                     resource: this.gbufferTextures[0].createView()
@@ -906,53 +949,41 @@ export default class DeferredRenderer {
         // ] });
         this.deferredLightLoopPipeline = this.device.createRenderPipeline({
             // layout: deferredLightLoopPipelineLayout,
-
-            vertexStage: {
+            vertex: {
                 module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                    code: vertexShaderFullScreenQuad,
                 }),
-                entryPoint: "main"
+                entryPoint: "main",
+                // buffers: [{
+                //     arrayStride: quadVertexSize, //padding
+                //     stepMode: "vertex",
+                //     attributes: [{
+                //         // position
+                //         shaderLocation: 0,
+                //         offset: 0,
+                //         format: "float32x4"
+                //     },
+                //     {
+                //         // uv
+                //         shaderLocation: 1,
+                //         offset: quadUVOffset,
+                //         format: "float32x2"
+                //     }]
+                // }]
             },
-            fragmentStage: {
+            fragment: {
                 module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(
-                        fragmentShaderDeferredShadingLoopLightsGLSL.replace('$1', this.lightCulling.numLights), "fragment"),
+                    code: replaceArray(
+                        fragmentShaderDeferredShadingLoopLights,
+                        ["$1", "$2", "$3"],
+                        [this.lightCulling.numLights, this.canvas.width.toFixed(1), this.canvas.height.toFixed(1)]
+                    ),
                 }),
-                entryPoint: "main"
+                entryPoint: "main",
+                targets: [
+                    { format: 'bgra8unorm' },
+                ],
             },
-
-            primitiveTopology: "triangle-list",
-
-            vertexInput: {
-                indexFormat: "uint32",
-                vertexBuffers: [{
-                    stride: quadVertexSize, //padding
-                    stepMode: "vertex",
-                    attributeSet: [{
-                        // position
-                        shaderLocation: 0,
-                        offset: 0,
-                        format: "float4"
-                    },
-                    {
-                        // uv
-                        shaderLocation: 1,
-                        offset: quadUVOffset,
-                        format: "float2"
-                    }]
-                }]
-            },
-
-            rasterizationState: {
-                frontFace: 'ccw',
-                cullMode: 'back'
-            },
-
-            colorStates: [{
-                format: "bgra8unorm",
-                alphaBlend: {},
-                colorBlend: {}
-            }]
         });
     }
 
@@ -965,7 +996,7 @@ export default class DeferredRenderer {
 
             vertexStage: {
                 module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                    code: vertexShaderFullScreenQuad,
                 }),
                 entryPoint: "main"
             },
@@ -980,25 +1011,25 @@ export default class DeferredRenderer {
             },
             primitiveTopology: "triangle-list",
 
-            vertexInput: {
-                indexFormat: "uint32",
-                vertexBuffers: [{
-                    stride: quadVertexSize, //padding
-                    stepMode: "vertex",
-                    attributeSet: [{
-                        // position
-                        shaderLocation: 0,
-                        offset: 0,
-                        format: "float4"
-                    },
-                    {
-                        // uv
-                        shaderLocation: 1,
-                        offset: quadUVOffset,
-                        format: "float2"
-                    }]
-                }]
-            },
+            // vertexInput: {
+            //     indexFormat: "uint32",
+            //     vertexBuffers: [{
+            //         stride: quadVertexSize, //padding
+            //         stepMode: "vertex",
+            //         attributeSet: [{
+            //             // position
+            //             shaderLocation: 0,
+            //             offset: 0,
+            //             format: "float4"
+            //         },
+            //         {
+            //             // uv
+            //             shaderLocation: 1,
+            //             offset: quadUVOffset,
+            //             format: "float2"
+            //         }]
+            //     }]
+            // },
 
             rasterizationState: {
                 frontFace: 'ccw',
@@ -1025,7 +1056,7 @@ export default class DeferredRenderer {
 
             vertexStage: {
                 module: this.device.createShaderModule({
-                    code: this.glslang.compileGLSL(vertexShaderFullScreenQuadGLSL, "vertex"),
+                    code: vertexShaderFullScreenQuad,
                 }),
                 entryPoint: "main"
             },
@@ -1040,25 +1071,25 @@ export default class DeferredRenderer {
             },
             primitiveTopology: "triangle-list",
 
-            vertexInput: {
-                indexFormat: "uint32",
-                vertexBuffers: [{
-                    stride: quadVertexSize, //padding
-                    stepMode: "vertex",
-                    attributeSet: [{
-                        // position
-                        shaderLocation: 0,
-                        offset: 0,
-                        format: "float4"
-                    },
-                    {
-                        // uv
-                        shaderLocation: 1,
-                        offset: quadUVOffset,
-                        format: "float2"
-                    }]
-                }]
-            },
+            // vertexInput: {
+            //     indexFormat: "uint32",
+            //     vertexBuffers: [{
+            //         stride: quadVertexSize, //padding
+            //         stepMode: "vertex",
+            //         attributeSet: [{
+            //             // position
+            //             shaderLocation: 0,
+            //             offset: 0,
+            //             format: "float4"
+            //         },
+            //         {
+            //             // uv
+            //             shaderLocation: 1,
+            //             offset: quadUVOffset,
+            //             format: "float2"
+            //         }]
+            //     }]
+            // },
 
             rasterizationState: {
                 frontFace: 'ccw',
@@ -1082,8 +1113,8 @@ export default class DeferredRenderer {
             }, resolve);
         });
 
-        const pAlbedoMap = createTextureFromImage(device, albedoUrl, GPUTextureUsage.SAMPLED);
-        const pNormalMap = normalUrl ? createTextureFromImage(device, normalUrl, GPUTextureUsage.SAMPLED) : null;
+        const pAlbedoMap = createTextureFromImage(device, albedoUrl, GPUTextureUsage.TEXTURE_BINDING);
+        const pNormalMap = normalUrl ? createTextureFromImage(device, normalUrl, GPUTextureUsage.TEXTURE_BINDING) : null;
 
         // dModel, dAlbedoMap, dNormalMap
         return Promise.all([pModel, pAlbedoMap, pNormalMap]).then((values) => {
@@ -1166,7 +1197,8 @@ export default class DeferredRenderer {
     }
 
     renderGBufferDebugView(commandEncoder) {
-        const swapChainTexture = this.swapChain.getCurrentTexture();
+        // const swapChainTexture = this.swapChain.getCurrentTexture();
+        const swapChainTexture = this.context.getCurrentTexture();
 
         // this.debugViewUniformBuffer.setSubData(0, new Float32Array([this.debugViewOffset]));
         const a = new Float32Array([this.debugViewOffset]);
@@ -1189,11 +1221,19 @@ export default class DeferredRenderer {
     }
 
     renderDeferredLightLoop(commandEncoder) {
-        this.lightCulling.update();     // TODO: only update light position (might have a separate compute shader that only do that)
+        // this.lightCulling.update();     // TODO: only update light position (might have a separate compute shader that only do that)
 
-        const swapChainTexture = this.swapChain.getCurrentTexture();
+        const swapChainTexture = this.context.getCurrentTexture();
 
-        this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+        // this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+        let v = this.camera.getPosition();
+        this.device.queue.writeBuffer(
+            this.cameraPositionUniformBuffer,
+            0,
+            v.buffer,
+            v.byteOffset,
+            v.byteLength
+        );
 
         this.renderFullScreenPassDescriptor.colorAttachments[0].view = swapChainTexture.createView();
         
@@ -1207,13 +1247,12 @@ export default class DeferredRenderer {
         quadPassEncoder.draw(6, 1, 0, 0);
 
         quadPassEncoder.endPass();
-        // this.device.queue.submit([commandEncoder.finish()]);
     }
 
     renderDeferredTiledLightDebug(commandEncoder) {
         this.lightCulling.update();
 
-        const swapChainTexture = this.swapChain.getCurrentTexture();
+        const swapChainTexture = this.context.getCurrentTexture();
 
         this.renderFullScreenPassDescriptor.colorAttachments[0].view = swapChainTexture.createView();
         
@@ -1231,7 +1270,7 @@ export default class DeferredRenderer {
     renderDeferredLightCulling(commandEncoder) {
         this.lightCulling.update();
 
-        const swapChainTexture = this.swapChain.getCurrentTexture();
+        const swapChainTexture = this.context.getCurrentTexture();
 
         this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
 

@@ -18,8 +18,8 @@ export default class Drawable {
                     binding: 0,
                     resource: {
                         buffer: uniformBuffer,
-                        offset: 0,
-                        size: 2 * 4 * 16    // this needs shader string stiching to fully make sense
+                        // offset: 0,
+                        // size: 2 * 4 * 16    // this needs shader string stiching to fully make sense
                     }
                 }
             ].concat(this.material.bindings)
