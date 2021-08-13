@@ -4,7 +4,7 @@ const tmpVec3 = vec3.create();
 const tmpVec4 = vec4.create();
 const tmpMat4 = mat4.create();
 
-const computeShaderCode = `#version 450
+const computeShaderCodeGLSL = `#version 450
 
 #define NUM_LIGHTS $1
 #define NUM_TILES $2
@@ -148,6 +148,157 @@ void main() {
 }
 `;
 
+const computeShader = `
+struct LightData {
+    position : vec4<f32>;
+    color : vec3<f32>;
+    radius : f32;
+};
+[[block]] struct LightsBuffer {
+    lights: array<LightData>;
+};
+[[group(0), binding(0)]] var<storage, read_write> lightsBuffer: LightsBuffer;
+
+struct TileLightIdData {
+    count: atomic<u32>;
+    lightId: array<u32, $NUM_TILE_LIGHT_SLOT>;
+};
+[[block]] struct Tiles {
+    data: array<TileLightIdData, $NUM_TILES>;
+};
+[[group(1), binding(0)]] var<storage, read_write> tileLightId: Tiles;
+  
+[[block]] struct Config {
+    numLights : u32;
+
+    numTiles : u32;
+    tileCountX : u32;
+    tileCountY : u32;
+    numTileLightSlot : u32;
+    tileSize : u32;
+};
+[[group(2), binding(0)]] var<uniform> config: Config;
+  
+// [[block]] struct LightExtent {
+//     min : vec4<f32>;
+//     max : vec4<f32>;
+// };
+// [[group(1), binding(0)]] var<uniform> lightExtent: LightExtent;
+
+
+
+
+[[block]] struct Uniforms {
+    min : vec4<f32>;
+    max : vec4<f32>;
+
+    // camera
+    viewMatrix : mat4x4<f32>;
+    projectionMatrix : mat4x4<f32>;
+
+    // Tile info
+    fullScreenSize : vec4<f32>;    // width, height
+};
+[[group(3), binding(0)]] var<uniform> uniforms: Uniforms;
+
+
+
+[[stage(compute), workgroup_size(64, 1, 1)]]
+fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
+    var index = GlobalInvocationID.x;
+    if (index >= config.numLights) {
+        return;
+    }
+
+    // Light position updating
+    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.5 - 0.003 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
+  
+    if (lightsBuffer.lights[index].position.y < uniforms.min.y) {
+        lightsBuffer.lights[index].position.y = uniforms.max.y;
+    }
+
+    // Light culling
+    // Implementation here is Tiled without per tile min-max depth
+    // You could also implement cluster culling
+    // Feel free to add more compute passes if necessary
+
+    // some math reference: http://www.txutxi.com/?p=444
+    var M: mat4x4<f32> = uniforms.projectionMatrix;
+
+    var viewNear: f32 = - M[3][2] / ( -1.0 + M[2][2]);
+    var viewFar: f32 = - M[3][2] / (1.0 + M[2][2]);
+
+    var lightPos: vec4<f32> = uniforms.viewMatrix * lightsBuffer.lights[index].position;
+    lightPos = lightPos * lightPos.w;
+
+    var lightRadius: f32 = lightsBuffer.lights[index].radius;
+
+    var boxMin: vec4<f32> = lightPos - vec4<f32>(vec3<f32>(lightRadius), 0.0);
+    var boxMax: vec4<f32> = lightPos + vec4<f32>(vec3<f32>(lightRadius), 0.0);
+
+    var frustumPlanes: array<vec4<f32>, 6>;
+    frustumPlanes[4] = vec4<f32>(0.0, 0.0, -1.0, viewNear);    // near
+    frustumPlanes[5] = vec4<f32>(0.0, 0.0, 1.0, -viewFar);    // far
+
+    let TILE_SIZE: u32 = $TILE_SIZEu;
+    let TILE_COUNT_X: u32 = $TILE_COUNT_Xu;
+    let TILE_COUNT_Y: u32 = $TILE_COUNT_Yu;
+    for (var y : u32 = 0u; y < TILE_COUNT_Y; y = y + 1u) {
+        for (var x : u32 = 0u; x < TILE_COUNT_X; x = x + 1u) {
+            var tilePixel0Idx : vec2<u32> = vec2<u32>(x * TILE_SIZE, y * TILE_SIZE);
+
+            // tile position in NDC space
+            var floorCoord: vec2<f32> = 2.0 * vec2<f32>(tilePixel0Idx) / uniforms.fullScreenSize.xy - vec2<f32>(1.0);  // -1, 1
+            var ceilCoord: vec2<f32> = 2.0 * vec2<f32>(tilePixel0Idx + vec2<u32>(TILE_SIZE)) / uniforms.fullScreenSize.xy - vec2<f32>(1.0);  // -1, 1
+
+            var viewFloorCoord: vec2<f32> = vec2<f32>( (- viewNear * floorCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * floorCoord.y - M[2][1] * viewNear) / M[1][1] );
+            var viewCeilCoord: vec2<f32> = vec2<f32>( (- viewNear * ceilCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * ceilCoord.y - M[2][1] * viewNear) / M[1][1] );
+
+            frustumPlanes[0] = vec4<f32>(1.0, 0.0, - viewFloorCoord.x / viewNear, 0.0);       // left
+            frustumPlanes[1] = vec4<f32>(-1.0, 0.0, viewCeilCoord.x / viewNear, 0.0);   // right
+            frustumPlanes[2] = vec4<f32>(0.0, 1.0, - viewFloorCoord.y / viewNear, 0.0);       // bottom
+            frustumPlanes[3] = vec4<f32>(0.0, -1.0, viewCeilCoord.y / viewNear, 0.0);   // top
+
+            var dp: f32 = 0.0;  // dot product
+
+            for (var i: u32 = 0u; i < 6u; i = i + 1u)
+            {
+                var p: vec4<f32>;
+                if (frustumPlanes[i].x > 0.0) {
+                    p.x = boxMax.x;
+                } else {
+                    p.x = boxMin.x;
+                }
+                if (frustumPlanes[i].y > 0.0) {
+                    p.y = boxMax.y;
+                } else {
+                    p.y = boxMin.y;
+                }
+                if (frustumPlanes[i].z > 0.0) {
+                    p.z = boxMax.z;
+                } else {
+                    p.z = boxMin.z;
+                }
+                dp = dp + min(0.0, dot(p, frustumPlanes[i]));
+            }
+
+            if (dp >= 0.0) {
+                var tileId: u32 = x + y * TILE_COUNT_X;
+                if (tileId < 0u || tileId >= config.numTiles) {
+                    continue;
+                }
+                var offset: u32 = atomicAdd(&(tileLightId.data[tileId].count), 1u);
+                if (offset >= config.numTileLightSlot) {
+                    continue;
+                }
+                tileLightId.data[tileId].lightId[offset] = GlobalInvocationID.x;
+            }
+        }
+    }
+}
+  
+`;
+
 function getCount(t, f) {
     return Math.floor( (t + f - 1) / f);
 }
@@ -219,17 +370,7 @@ export default class LightCulling {
             ]
         });
 
-        this.lightBufferBindGroup = this.device.createBindGroup({
-            layout: this.storageBufferBindGroupLayout,
-            entries: [
-              {
-                binding: 0,
-                resource: {
-                  buffer: lightDataGPUBuffer
-                }
-              },
-            ]
-        });
+        
 
         const uniformBufferSize = 4 * 4 * 2 + 4 * 16 * 2 + 4 * 4;
         const uniformBuffer = this.uniformBuffer = this.device.createBuffer({
@@ -274,17 +415,7 @@ export default class LightCulling {
             ]
         });
 
-        this.uniformBindGroup = this.device.createBindGroup({
-            layout: uniformBufferBindGroupLayout,
-            entries: [
-              {
-                binding: 0,
-                resource: {
-                  buffer: uniformBuffer
-                }
-              },
-            ]
-        });
+        
 
 
         // Tile buffer init
@@ -321,31 +452,131 @@ export default class LightCulling {
         tileLightIdGPUBuffer.unmap();
         this.tileLightIdGPUBuffer = tileLightIdGPUBuffer;
 
-        this.tileLightIdBufferBindGroup = this.device.createBindGroup({
-            layout: this.storageBufferBindGroupLayout,
+        // this.tileLightIdBufferBindGroup = this.device.createBindGroup({
+        //     layout: this.storageBufferBindGroupLayout,
+        //     entries: [
+        //       {
+        //         binding: 0,
+        //         resource: {
+        //           buffer: tileLightIdGPUBuffer
+        //         }
+        //       },
+        //     ]
+        // });
+
+        this.lightCullingComputePipeline = this.device.createComputePipeline({
+            // layout: this.device.createPipelineLayout({
+            //   bindGroupLayouts: [
+            //       this.storageBufferBindGroupLayout,
+            //       uniformBufferBindGroupLayout, this.storageBufferBindGroupLayout]
+            // }),
+            compute: {
+              module: this.device.createShaderModule({
+                // code: this.glslang.compileGLSL(
+                //     replaceArray(computeShaderCodeGLSL, ["$1", "$2", "$3", "$4", "$5", "$6"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot, this.tileSize]),
+                //     "compute")
+                // code: computeShader
+                code: replaceArray(computeShader,
+                    ['$NUM_TILE_LIGHT_SLOT', '$NUM_TILES', '$TILE_COUNT_Y', '$TILE_COUNT_X', '$TILE_SIZE'],
+                    [this.tileLightSlot, this.numTiles, this.tileCount[1], this.tileCount[0], this.tileSize]
+                )
+              }),
+              entryPoint: "main"
+            }
+        });
+
+        const configUniformBuffer = (() => {
+            const buffer = this.device.createBuffer({
+                size: Uint32Array.BYTES_PER_ELEMENT * 6,
+                mappedAtCreation: true,
+                usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            });
+            const v = new Uint32Array(buffer.getMappedRange())
+            v[0] = this.numLights;
+            v[1] = this.numTiles;
+            v[2] = this.tileCount[0];
+            v[3] = this.tileCount[1];
+            v[4] = this.tileLightSlot;
+            v[5] = this.tileSize;
+            buffer.unmap();
+            return buffer;
+        })();
+
+
+        // const lightBufferBindGroupLayout = this.device.createBindGroupLayout({
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+        //             buffer: {
+        //                 type: "storage"
+        //             }
+        //         },
+        //         {
+        //             binding: 1,
+        //             visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+        //             buffer: {
+        //                 type: "storage"
+        //             }
+        //         },
+        //     ]
+        // });
+
+        this.lightBufferBindGroup = this.device.createBindGroup({
+            layout: this.lightCullingComputePipeline.getBindGroupLayout(0),
+            // layout: this.storageBufferBindGroupLayout,
             entries: [
               {
                 binding: 0,
                 resource: {
-                  buffer: tileLightIdGPUBuffer
+                  buffer: lightDataGPUBuffer
+                }
+              },
+            //   {
+            //     binding: 1,
+            //     resource: {
+            //       buffer: tileLightIdGPUBuffer,
+            //     }
+            //   },
+            ]
+        });
+        this.tileLightIdBindGroup = this.device.createBindGroup({
+            layout: this.lightCullingComputePipeline.getBindGroupLayout(1),
+            // layout: this.storageBufferBindGroupLayout,
+            entries: [
+              {
+                binding: 0,
+                resource: {
+                  buffer: tileLightIdGPUBuffer,
                 }
               },
             ]
         });
 
-        // this.lightCullingComputePipeline = this.device.createComputePipeline({
-        //     layout: this.device.createPipelineLayout({
-        //       bindGroupLayouts: [this.storageBufferBindGroupLayout, uniformBufferBindGroupLayout, this.storageBufferBindGroupLayout]
-        //     }),
-        //     computeStage: {
-        //       module: this.device.createShaderModule({
-        //         code: this.glslang.compileGLSL(
-        //             replaceArray(computeShaderCode, ["$1", "$2", "$3", "$4", "$5", "$6"], [this.numLights, this.numTiles, this.tileCount[0], this.tileCount[1], this.tileLightSlot, this.tileSize]),
-        //             "compute")
-        //       }),
-        //       entryPoint: "main"
-        //     }
-        // });
+        this.configBindGroup = this.device.createBindGroup({
+            layout: this.lightCullingComputePipeline.getBindGroupLayout(2),
+            entries: [
+              {
+                binding: 0,
+                resource: {
+                  buffer: configUniformBuffer
+                }
+              },
+            ]
+        });
+
+        this.uniformBindGroup = this.device.createBindGroup({
+            // layout: uniformBufferBindGroupLayout,
+            layout: this.lightCullingComputePipeline.getBindGroupLayout(3),
+            entries: [
+              {
+                binding: 0,
+                resource: {
+                  buffer: uniformBuffer
+                }
+              },
+            ]
+        });
 
     }
 
@@ -364,26 +595,43 @@ export default class LightCulling {
     }
 
     update() {
-        this.uniformBuffer.setSubData(32, this.camera.viewMatrix);
-        // projectionMatrix generated by gl-matrix is in right-handed coordinates.
-        // we flipped it on y to make it work with the webgpu left handed coordinate system.
-        // we reset it here to make sure the light culling math are all done in right handed system.
-        mat4.scale(tmpMat4, this.camera.projectionMatrix, vec3.fromValues(1, -1, 1));
-        this.uniformBuffer.setSubData(96, tmpMat4);
+        this.device.queue.writeBuffer(
+            this.uniformBuffer,
+            32,
+            this.camera.viewMatrix.buffer,
+            this.camera.viewMatrix.byteOffset,
+            this.camera.viewMatrix.byteLength
+          );
+        this.device.queue.writeBuffer(
+            this.uniformBuffer,
+            96,
+            this.camera.projectionMatrix.buffer,
+            this.camera.projectionMatrix.byteOffset,
+            this.camera.projectionMatrix.byteLength
+          );
 
         // clear
-        this.tileLightIdGPUBuffer.setSubData(0, this.tileLightIdData);
+        this.device.queue.writeBuffer(
+            this.tileLightIdGPUBuffer,
+            0,
+            this.tileLightIdData.buffer,
+            this.tileLightIdData.byteOffset,
+            this.tileLightIdData.byteLength
+          );
 
         const commandEncoder = this.device.createCommandEncoder();
 
         const passEncoder = commandEncoder.beginComputePass();
         passEncoder.setPipeline(this.lightCullingComputePipeline);
         passEncoder.setBindGroup(0, this.lightBufferBindGroup);
-        passEncoder.setBindGroup(1, this.uniformBindGroup);
-        passEncoder.setBindGroup(2, this.tileLightIdBufferBindGroup);
+        passEncoder.setBindGroup(1, this.tileLightIdBindGroup);
+        passEncoder.setBindGroup(2, this.configBindGroup);
+        passEncoder.setBindGroup(3, this.uniformBindGroup);
+        // passEncoder.setBindGroup(1, this.uniformBindGroup);
+        // passEncoder.setBindGroup(2, this.tileLightIdBufferBindGroup);
         passEncoder.dispatch(this.numLights);
         passEncoder.endPass();
 
-        this.device.getQueue().submit([commandEncoder.finish()]);
+        this.device.queue.submit([commandEncoder.finish()]);
     }
 }

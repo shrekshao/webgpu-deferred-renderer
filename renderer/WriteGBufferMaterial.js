@@ -123,16 +123,13 @@ export default class WriteGBufferMaterial {
                 {
                     binding: 0,
                     visibility: GPUShaderStage.VERTEX,
-                    // type: "uniform-buffer"
                     buffer: {
                         type: 'uniform',
-                        // minBindingSize: 4,
-                      },
+                    },
                 },
                 {
                     binding: 1,
                     visibility: GPUShaderStage.FRAGMENT,
-                    // type: "sampler"
                     sampler: {
                         type: 'filtering',
                     }
@@ -140,8 +137,6 @@ export default class WriteGBufferMaterial {
                 {
                     binding: 2,
                     visibility: GPUShaderStage.FRAGMENT,
-                    // type: "sampled-texture",
-                    // textureComponentType: "float"
                     texture: {
                         sampleType: 'float',
                     }
@@ -149,8 +144,6 @@ export default class WriteGBufferMaterial {
                 {
                     binding: 3,
                     visibility: GPUShaderStage.FRAGMENT,
-                    // type: "sampled-texture",
-                    // textureComponentType: "float"
                     texture: {
                         sampleType: 'float',
                     }
