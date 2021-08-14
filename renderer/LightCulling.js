@@ -185,9 +185,6 @@ struct TileLightIdData {
 // };
 // [[group(1), binding(0)]] var<uniform> lightExtent: LightExtent;
 
-
-
-
 [[block]] struct Uniforms {
     min : vec4<f32>;
     max : vec4<f32>;
@@ -201,8 +198,6 @@ struct TileLightIdData {
 };
 [[group(3), binding(0)]] var<uniform> uniforms: Uniforms;
 
-
-
 [[stage(compute), workgroup_size(64, 1, 1)]]
 fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     var index = GlobalInvocationID.x;
@@ -211,7 +206,7 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     }
 
     // Light position updating
-    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.5 - 0.003 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
+    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1 - 0.0003 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
   
     if (lightsBuffer.lights[index].position.y < uniforms.min.y) {
         lightsBuffer.lights[index].position.y = uniforms.max.y;
@@ -228,8 +223,8 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     var viewNear: f32 = - M[3][2] / ( -1.0 + M[2][2]);
     var viewFar: f32 = - M[3][2] / (1.0 + M[2][2]);
 
-    var lightPos: vec4<f32> = uniforms.viewMatrix * lightsBuffer.lights[index].position;
-    lightPos = lightPos * lightPos.w;
+    var lightPos: vec4<f32> = uniforms.viewMatrix * vec4<f32>(lightsBuffer.lights[index].position.xyz, 1.0);
+    lightPos = lightPos / lightPos.w;
 
     var lightRadius: f32 = lightsBuffer.lights[index].radius;
 
@@ -283,6 +278,7 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
             }
 
             if (dp >= 0.0) {
+                // light is overlapping with the tile
                 var tileId: u32 = x + y * TILE_COUNT_X;
                 if (tileId < 0u || tileId >= config.numTiles) {
                     continue;
@@ -351,6 +347,7 @@ export default class LightCulling {
             // radius
             // tmpVec4[3] = 4.0;
             tmpVec4[3] = 2.0;
+            // tmpVec4[3] = 0.00001;
             this.setV4(lightData, offset + 4, tmpVec4);
         }
 
@@ -403,17 +400,17 @@ export default class LightCulling {
             tmpVec4.byteLength,
         );
 
-        const uniformBufferBindGroupLayout = this.device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.COMPUTE,
-                    buffer: {
-                        type: 'uniform'
-                    }
-                },
-            ]
-        });
+        // const uniformBufferBindGroupLayout = this.device.createBindGroupLayout({
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.COMPUTE,
+        //             buffer: {
+        //                 type: 'uniform'
+        //             }
+        //         },
+        //     ]
+        // });
 
         
 
@@ -429,7 +426,7 @@ export default class LightCulling {
         // This is a magic number.
         this.tileLightSlot = Math.max( 127, Math.ceil(this.numLights * safeFactor / 128) * 128 - 1 );
         this.tileLightIdBufferSize = (this.tileLightSlot + 1) * this.numTiles;
-        this.tileLightIDBufferSizeInByte = this.tileLightIdBufferSize * 4;
+        this.tileLightIDBufferSizeInByte = this.tileLightIdBufferSize * Uint32Array.BYTES_PER_ELEMENT;
 
         console.log('Lights: ' + this.numLights);
         console.log('Tile light slots: ' + this.tileLightSlot);
@@ -443,14 +440,14 @@ export default class LightCulling {
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             mappedAtCreation: true,
         });
-
         const tileLightIdArrayBuffer = tileLightIdGPUBuffer.getMappedRange();
-
-        const tileLightIdData = this.tileLightIdData = new Int32Array(tileLightIdArrayBuffer);
-        tileLightIdData.fill(0);
-
+        const tileLightIdData = new Uint32Array(tileLightIdArrayBuffer);
+        tileLightIdData.fill(0);    // TODO: no need to mappedAtCreation
         tileLightIdGPUBuffer.unmap();
         this.tileLightIdGPUBuffer = tileLightIdGPUBuffer;
+
+        this.tileLightIdZeroData = new Uint32Array(this.tileLightIdBufferSize);
+        this.tileLightIdZeroData.fill(0);
 
         // this.tileLightIdBufferBindGroup = this.device.createBindGroup({
         //     layout: this.storageBufferBindGroupLayout,
@@ -540,7 +537,7 @@ export default class LightCulling {
             //   },
             ]
         });
-        this.tileLightIdBindGroup = this.device.createBindGroup({
+        this.tileLightIdBufferBindGroup = this.device.createBindGroup({
             layout: this.lightCullingComputePipeline.getBindGroupLayout(1),
             // layout: this.storageBufferBindGroupLayout,
             entries: [
@@ -610,13 +607,13 @@ export default class LightCulling {
             this.camera.projectionMatrix.byteLength
           );
 
-        // clear
+        // clear to 0
         this.device.queue.writeBuffer(
             this.tileLightIdGPUBuffer,
             0,
-            this.tileLightIdData.buffer,
-            this.tileLightIdData.byteOffset,
-            this.tileLightIdData.byteLength
+            this.tileLightIdZeroData.buffer,
+            this.tileLightIdZeroData.byteOffset,
+            this.tileLightIdZeroData.byteLength
           );
 
         const commandEncoder = this.device.createCommandEncoder();
@@ -624,7 +621,7 @@ export default class LightCulling {
         const passEncoder = commandEncoder.beginComputePass();
         passEncoder.setPipeline(this.lightCullingComputePipeline);
         passEncoder.setBindGroup(0, this.lightBufferBindGroup);
-        passEncoder.setBindGroup(1, this.tileLightIdBindGroup);
+        passEncoder.setBindGroup(1, this.tileLightIdBufferBindGroup);
         passEncoder.setBindGroup(2, this.configBindGroup);
         passEncoder.setBindGroup(3, this.uniformBindGroup);
         // passEncoder.setBindGroup(1, this.uniformBindGroup);
