@@ -343,6 +343,9 @@ fn main([[builtin(position)]] coord : vec4<f32>,
     // result = vec4<f32>(f32(tileCoord.x) / 16.0, f32(tileCoord.y) / 16.0, 0.0, 1.0);
     // result = vec4<f32>(0.0, f32(tileId) / 256.0, 0.0, 1.0);
 
+    // result = vec4<f32>(coord.x / 512.0, coord.y / 512.0, 0.0, 1.0);
+    // result = vec4<f32>(fragUV.x, fragUV.y, 0.0, 1.0);
+
 
     return result;
 }
@@ -517,15 +520,25 @@ fn main([[builtin(position)]] coord : vec4<f32>,
   var tileId: u32 = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
   var c: u32 = atomicLoad(&tileLightId.data[tileId].count);
-  for (var i : u32 = 0u; i < c; i = i + 1u) {
-    var light: LightData = lightsBuffer.lights[ tileLightId.data[tileId].lightId[i] ];
+//   for (var i : u32 = 0u; i < c; i = i + 1u) {
+//   for (var i : u32 = 0u; i < 127u; i = i + 1u) {
+  for (var i : u32 = 0u; i < $2u; i = i + 1u) {
+//   for (var i : u32 = 0u; i < 0u; i = i + 1u) {
+    if (i >= c) {
+        break;
+    }
+    var light = lightsBuffer.lights[ tileLightId.data[tileId].lightId[i] ];
 
-    var distance = distance(light.position.xyz, position);
+
+    // var L = normalize(light.position.xyz - position);
+
+    var L = light.position.xyz - position;
+    var distance = length(L);
     if (distance  > light.radius) {
         continue;
     }
+    L = normalize(L);
 
-    var L = normalize(light.position.xyz - position);
     var lambert = max(dot(L, normal), 0.0);
     var H = normalize(L + V);
     var specular = f32(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
@@ -539,16 +552,27 @@ fn main([[builtin(position)]] coord : vec4<f32>,
   }
 
 
-//   for (var i : u32 = 0u; i < config.numLights; i = i + 1u) {
+//   for (var i : u32 = 0u; i < 2048u; i = i + 1u) {
 // //   for (var i : u32 = 0u; i < 1024u; i = i + 1u) {
-//     var L = lightsBuffer.lights[i].position.xyz - position;
+//     var light = lightsBuffer.lights[ i ];
+//     var L = light.position.xyz - position;
 //     var distance = length(L);
-//     if (distance > lightsBuffer.lights[i].radius) {
+//     if (distance > light.radius) {
 //         continue;
 //     }
-//     var lambert = max(dot(normal, normalize(L)), 0.0);
-//     result = result + vec3<f32>(
-//       lambert * pow(1.0 - distance / lightsBuffer.lights[i].radius, 2.0) * lightsBuffer.lights[i].color * albedo);
+//     L = normalize(L);
+//     var lambert = max(dot(normal, L), 0.0);
+//     var H = normalize(L + V);
+//     var specular = f32(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+//     result = result +
+//             clamp(light.color * pow(1.0 - distance / light.radius, 2.0) *
+//             (
+//                 albedo * lambert + 
+//                     vec3<f32>(1.0) * specular  // Assume white specular, modify if you add more specular info
+//             ), vec3<f32>(0.0), vec3<f32>(1.0));
+
+//     // result = result + vec3<f32>(
+//     //   lambert * pow(1.0 - distance / light.radius, 2.0) * light.color * albedo);
 //   }
 
 // //   // some manual ambient
@@ -758,7 +782,13 @@ export default class DeferredRenderer {
             colorAttachments: [
                 {
                     view: this.gbufferTextures[0].createView(),
-                    loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                    // loadValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+                    loadValue: {
+                        r: Number.MAX_VALUE,
+                        g: Number.MAX_VALUE,
+                        b: Number.MAX_VALUE,
+                        a: 1.0,
+                      },
                     storeOp: "store",
                 },
                 {
@@ -1393,6 +1423,14 @@ export default class DeferredRenderer {
         const swapChainTexture = this.context.getCurrentTexture();
 
         // this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+        const eye = this.camera.getPosition();
+        this.device.queue.writeBuffer(
+            this.cameraPositionUniformBuffer,
+            0,
+            eye.buffer,
+            eye.byteOffset,
+            eye.byteLength,
+        );
 
         this.renderFullScreenPassDescriptor.colorAttachments[0].view = swapChainTexture.createView();
         

@@ -206,7 +206,8 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     }
 
     // Light position updating
-    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1 - 0.0003 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
+    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1;
+    // lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1 - 0.0003 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
   
     if (lightsBuffer.lights[index].position.y < uniforms.min.y) {
         lightsBuffer.lights[index].position.y = uniforms.max.y;
@@ -223,7 +224,8 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     var viewNear: f32 = - M[3][2] / ( -1.0 + M[2][2]);
     var viewFar: f32 = - M[3][2] / (1.0 + M[2][2]);
 
-    var lightPos: vec4<f32> = uniforms.viewMatrix * vec4<f32>(lightsBuffer.lights[index].position.xyz, 1.0);
+    // var lightPos: vec4<f32> = uniforms.viewMatrix * vec4<f32>(lightsBuffer.lights[index].position.xyz, 1.0);
+    var lightPos: vec4<f32> = uniforms.viewMatrix * lightsBuffer.lights[index].position;
     lightPos = lightPos / lightPos.w;
 
     var lightRadius: f32 = lightsBuffer.lights[index].radius;
@@ -310,6 +312,7 @@ export default class LightCulling {
 
         // this.numLights = 4096;
         this.numLights = 2048;
+        // this.numLights = 512;
         // this.numLights = 500;
         // this.numLights = 15;
         // this.numLights = 2;
@@ -438,12 +441,12 @@ export default class LightCulling {
         const tileLightIdGPUBuffer = this.device.createBuffer({
             size: this.tileLightIDBufferSizeInByte,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-            mappedAtCreation: true,
+            // mappedAtCreation: true,
         });
-        const tileLightIdArrayBuffer = tileLightIdGPUBuffer.getMappedRange();
-        const tileLightIdData = new Uint32Array(tileLightIdArrayBuffer);
-        tileLightIdData.fill(0);    // TODO: no need to mappedAtCreation
-        tileLightIdGPUBuffer.unmap();
+        // const tileLightIdArrayBuffer = tileLightIdGPUBuffer.getMappedRange();
+        // const tileLightIdData = new Uint32Array(tileLightIdArrayBuffer);
+        // tileLightIdData.fill(0);    // TODO: no need to mappedAtCreation
+        // tileLightIdGPUBuffer.unmap();
         this.tileLightIdGPUBuffer = tileLightIdGPUBuffer;
 
         this.tileLightIdZeroData = new Uint32Array(this.tileLightIdBufferSize);
