@@ -37,7 +37,7 @@ export default class Camera {
 
         // // workaround for left handness
         // // together with 'cw' being front face
-        // mat4.scale(this.projectionMatrix, this.projectionMatrix, vec3.fromValues(1, -1, 1));
+        mat4.scale(this.projectionMatrix, this.projectionMatrix, vec3.fromValues(1, -1, 1));
 
         canvas.onmousedown = function(event) {
             mouseDown = true;

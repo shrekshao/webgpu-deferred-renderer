@@ -322,14 +322,16 @@ fn main([[builtin(position)]] coord : vec4<f32>,
     var result : vec4<f32>;
     let TILE_COUNT_X: u32 = $TILE_COUNT_Xu;
     let TILE_COUNT_Y: u32 = $TILE_COUNT_Yu;
+
     var tileScale = vec2<f32>(1.0 / f32(TILE_COUNT_X), 1.0 / f32(TILE_COUNT_Y));
     var tileCoord = vec2<u32>(floor( fragUV / tileScale ));
-    // var tileCoord = (vec2<u32>(floor(coord.xy)) / vec2<u32>(TILE_COUNT_X, TILE_COUNT_Y));
+
+    // var tileCoord = vec2<u32>(floor(coord.xy)) / vec2<u32>(TILE_COUNT_X, TILE_COUNT_Y);
     var tileId: u32 = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
     var c: u32 = atomicLoad(&tileLightId.data[tileId].count);
     var t: f32 = f32(c) / ( f32($2) );
-    t = t * 4.0;
+    // t = t * 4.0;
     result.r = 4.0 * t - 2.0;
     if (t < 0.5) {
         result.g = 4.0 * t;
@@ -484,12 +486,12 @@ fn main([[builtin(position)]] coord : vec4<f32>,
         [[location(0)]] fragUV : vec2<f32>)
      -> [[location(0)]] vec4<f32> {
   var result = vec3<f32>(0.0, 0.0, 0.0);
-//   var c = coord.xy / canvas.size;
-//   var c = fragUV;
+//   var c = vec2<i32>(floor(coord.xy));
+  var c = vec2<i32>(floor(fragUV * vec2<f32>(512.0, 512.0)));
 
   var position = textureLoad(
     gBufferPosition,
-    vec2<i32>(floor(coord.xy)),
+    c,
     0
   ).xyz;
 
@@ -499,13 +501,13 @@ fn main([[builtin(position)]] coord : vec4<f32>,
 
   var normal = textureLoad(
     gBufferNormal,
-    vec2<i32>(floor(coord.xy)),
+    c,
     0
   ).xyz;
 
   var albedo = textureLoad(
     gBufferAlbedo,
-    vec2<i32>(floor(coord.xy)),
+    c,
     0
   ).rgb;
 
@@ -517,14 +519,17 @@ fn main([[builtin(position)]] coord : vec4<f32>,
 
   var tileScale = vec2<f32>(1.0 / f32(TILE_COUNT_X), 1.0 / f32(TILE_COUNT_Y));
   var tileCoord = vec2<u32>(floor( fragUV / tileScale ));
+
+//   var tileCoord = vec2<u32>(floor(coord.xy)) / vec2<u32>(TILE_COUNT_X, TILE_COUNT_Y);
+
   var tileId: u32 = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
-  var c: u32 = atomicLoad(&tileLightId.data[tileId].count);
+  var count: u32 = atomicLoad(&tileLightId.data[tileId].count);
 //   for (var i : u32 = 0u; i < c; i = i + 1u) {
 //   for (var i : u32 = 0u; i < 127u; i = i + 1u) {
   for (var i : u32 = 0u; i < $2u; i = i + 1u) {
 //   for (var i : u32 = 0u; i < 0u; i = i + 1u) {
-    if (i >= c) {
+    if (i >= count) {
         break;
     }
     var light = lightsBuffer.lights[ tileLightId.data[tileId].lightId[i] ];

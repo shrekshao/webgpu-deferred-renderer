@@ -206,8 +206,8 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     }
 
     // Light position updating
-    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1;
-    // lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1 - 0.0003 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
+    // lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1;
+    lightsBuffer.lights[index].position.y = lightsBuffer.lights[index].position.y - 0.1 + 0.001 * (f32(index) - 64.0 * floor(f32(index) / 64.0));
   
     if (lightsBuffer.lights[index].position.y < uniforms.min.y) {
         lightsBuffer.lights[index].position.y = uniforms.max.y;
@@ -237,16 +237,16 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     frustumPlanes[4] = vec4<f32>(0.0, 0.0, -1.0, viewNear);    // near
     frustumPlanes[5] = vec4<f32>(0.0, 0.0, 1.0, -viewFar);    // far
 
-    let TILE_SIZE: u32 = $TILE_SIZEu;
-    let TILE_COUNT_X: u32 = $TILE_COUNT_Xu;
-    let TILE_COUNT_Y: u32 = $TILE_COUNT_Yu;
-    for (var y : u32 = 0u; y < TILE_COUNT_Y; y = y + 1u) {
-        for (var x : u32 = 0u; x < TILE_COUNT_X; x = x + 1u) {
-            var tilePixel0Idx : vec2<u32> = vec2<u32>(x * TILE_SIZE, y * TILE_SIZE);
+    let TILE_SIZE: i32 = $TILE_SIZE;
+    let TILE_COUNT_X: i32 = $TILE_COUNT_X;
+    let TILE_COUNT_Y: i32 = $TILE_COUNT_Y;
+    for (var y : i32 = 0; y < TILE_COUNT_Y; y = y + 1) {
+        for (var x : i32 = 0; x < TILE_COUNT_X; x = x + 1) {
+            var tilePixel0Idx : vec2<i32> = vec2<i32>(x * TILE_SIZE, y * TILE_SIZE);
 
             // tile position in NDC space
             var floorCoord: vec2<f32> = 2.0 * vec2<f32>(tilePixel0Idx) / uniforms.fullScreenSize.xy - vec2<f32>(1.0);  // -1, 1
-            var ceilCoord: vec2<f32> = 2.0 * vec2<f32>(tilePixel0Idx + vec2<u32>(TILE_SIZE)) / uniforms.fullScreenSize.xy - vec2<f32>(1.0);  // -1, 1
+            var ceilCoord: vec2<f32> = 2.0 * vec2<f32>(tilePixel0Idx + vec2<i32>(TILE_SIZE)) / uniforms.fullScreenSize.xy - vec2<f32>(1.0);  // -1, 1
 
             var viewFloorCoord: vec2<f32> = vec2<f32>( (- viewNear * floorCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * floorCoord.y - M[2][1] * viewNear) / M[1][1] );
             var viewCeilCoord: vec2<f32> = vec2<f32>( (- viewNear * ceilCoord.x - M[2][0] * viewNear) / M[0][0] , (- viewNear * ceilCoord.y - M[2][1] * viewNear) / M[1][1] );
@@ -276,12 +276,13 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
                 } else {
                     p.z = boxMin.z;
                 }
+                p.w = 1.0;
                 dp = dp + min(0.0, dot(p, frustumPlanes[i]));
             }
 
             if (dp >= 0.0) {
                 // light is overlapping with the tile
-                var tileId: u32 = x + y * TILE_COUNT_X;
+                var tileId: u32 = u32(x + y * TILE_COUNT_X);
                 if (tileId < 0u || tileId >= config.numTiles) {
                     continue;
                 }
@@ -603,13 +604,22 @@ export default class LightCulling {
             this.camera.viewMatrix.byteOffset,
             this.camera.viewMatrix.byteLength
           );
+        // magic math used to work
+        mat4.scale(tmpMat4, this.camera.projectionMatrix, vec3.fromValues(1, -1, 1));
         this.device.queue.writeBuffer(
             this.uniformBuffer,
             96,
-            this.camera.projectionMatrix.buffer,
-            this.camera.projectionMatrix.byteOffset,
-            this.camera.projectionMatrix.byteLength
+            tmpMat4.buffer,
+            tmpMat4.byteOffset,
+            tmpMat4.byteLength
           );
+        // this.device.queue.writeBuffer(
+        //     this.uniformBuffer,
+        //     96,
+        //     this.camera.projectionMatrix.buffer,
+        //     this.camera.projectionMatrix.byteOffset,
+        //     this.camera.projectionMatrix.byteLength
+        //   );
 
         // clear to 0
         this.device.queue.writeBuffer(
