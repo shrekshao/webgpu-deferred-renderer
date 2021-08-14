@@ -35,10 +35,6 @@ export default class Camera {
         
         mat4.perspective(this.projectionMatrix, (2 * Math.PI) / 5, aspect, 0.1, 100.0);
 
-        // // workaround for left handness
-        // // together with 'cw' being front face
-        mat4.scale(this.projectionMatrix, this.projectionMatrix, vec3.fromValues(1, -1, 1));
-
         canvas.onmousedown = function(event) {
             mouseDown = true;
             mouseButtonId = event.which;

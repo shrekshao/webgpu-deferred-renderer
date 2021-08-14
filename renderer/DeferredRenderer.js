@@ -324,9 +324,8 @@ fn main([[builtin(position)]] coord : vec4<f32>,
     let TILE_COUNT_Y: u32 = $TILE_COUNT_Yu;
 
     var tileScale = vec2<f32>(1.0 / f32(TILE_COUNT_X), 1.0 / f32(TILE_COUNT_Y));
-    var tileCoord = vec2<u32>(floor( fragUV / tileScale ));
-
-    // var tileCoord = vec2<u32>(floor(coord.xy)) / vec2<u32>(TILE_COUNT_X, TILE_COUNT_Y);
+    var flipUV = vec2<f32>(fragUV.x, 1.0 - fragUV.y);
+    var tileCoord = vec2<u32>(floor( flipUV / tileScale ));
     var tileId: u32 = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 
     var c: u32 = atomicLoad(&tileLightId.data[tileId].count);
@@ -486,8 +485,8 @@ fn main([[builtin(position)]] coord : vec4<f32>,
         [[location(0)]] fragUV : vec2<f32>)
      -> [[location(0)]] vec4<f32> {
   var result = vec3<f32>(0.0, 0.0, 0.0);
-//   var c = vec2<i32>(floor(coord.xy));
-  var c = vec2<i32>(floor(fragUV * vec2<f32>(512.0, 512.0)));
+  var c = vec2<i32>(floor(coord.xy));
+//   var c = vec2<i32>(floor(fragUV * vec2<f32>(512.0, 512.0)));
 
   var position = textureLoad(
     gBufferPosition,
@@ -518,9 +517,8 @@ fn main([[builtin(position)]] coord : vec4<f32>,
   let TILE_COUNT_Y: u32 = $TILE_COUNT_Yu;
 
   var tileScale = vec2<f32>(1.0 / f32(TILE_COUNT_X), 1.0 / f32(TILE_COUNT_Y));
-  var tileCoord = vec2<u32>(floor( fragUV / tileScale ));
-
-//   var tileCoord = vec2<u32>(floor(coord.xy)) / vec2<u32>(TILE_COUNT_X, TILE_COUNT_Y);
+  var flipUV = vec2<f32>(fragUV.x, 1.0 - fragUV.y);
+  var tileCoord = vec2<u32>(floor( flipUV / tileScale ));
 
   var tileId: u32 = tileCoord.x + tileCoord.y * TILE_COUNT_X;
 

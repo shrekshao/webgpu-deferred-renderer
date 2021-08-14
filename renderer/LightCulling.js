@@ -604,7 +604,8 @@ export default class LightCulling {
             this.camera.viewMatrix.byteOffset,
             this.camera.viewMatrix.byteLength
           );
-        // magic math used to work
+        // my shader math used to work with flipped projection Matrix. I forgot why.
+        // just don't touch...
         mat4.scale(tmpMat4, this.camera.projectionMatrix, vec3.fromValues(1, -1, 1));
         this.device.queue.writeBuffer(
             this.uniformBuffer,
