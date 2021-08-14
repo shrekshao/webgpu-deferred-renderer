@@ -341,6 +341,7 @@ fn main([[builtin(position)]] coord : vec4<f32>,
 
 
     // result = vec4<f32>(f32(tileCoord.x) / 16.0, f32(tileCoord.y) / 16.0, 0.0, 1.0);
+    // result = vec4<f32>(0.0, f32(tileId) / 256.0, 0.0, 1.0);
 
 
     return result;
@@ -435,31 +436,53 @@ const fragmentShaderDeferredShadingTiled = `
 [[group(0), binding(2)]] var gBufferNormal: texture_2d<f32>;
 [[group(0), binding(3)]] var gBufferAlbedo: texture_2d<f32>;
 
+[[block]] struct CameraPositionUniform {
+    position: vec4<f32>;
+};
+[[group(1), binding(0)]] var<uniform> camera: CameraPositionUniform;
+
 struct LightData {
-  position : vec4<f32>;
-  color : vec3<f32>;
-  radius : f32;
+    position : vec4<f32>;
+    color : vec3<f32>;
+    radius : f32;
 };
 [[block]] struct LightsBuffer {
-  lights: array<LightData>;
+    lights: array<LightData>;
 };
-[[group(2), binding(0)]] var<storage, read> lightsBuffer: LightsBuffer;
+[[group(1), binding(1)]] var<storage, read_write> lightsBuffer: LightsBuffer;
+
+struct TileLightIdData {
+    count: atomic<u32>;
+    lightId: array<u32, $NUM_TILE_LIGHT_SLOT>;
+};
+[[block]] struct Tiles {
+    data: array<TileLightIdData, $NUM_TILES>;
+};
+[[group(1), binding(2)]] var<storage, read_write> tileLightId: Tiles;
 
 // [[block]] struct Config {
-//   numLights : u32;
-// };
-// [[group(2), binding(1)]] var<uniform> config: Config;
+//     numLights : u32;
 
-[[block]] struct CanvasConstants {
-  size: vec2<f32>;
-};
-[[group(4), binding(0)]] var<uniform> canvas : CanvasConstants;
+//     numTiles : u32;
+//     tileCountX : u32;
+//     tileCountY : u32;
+//     numTileLightSlot : u32;
+//     tileSize : u32;
+// };
+// [[group(1), binding(3)]] var<uniform> config: Config;
+
+// [[block]] struct CanvasConstants {
+//   size: vec2<f32>;
+// };
+// [[group(4), binding(0)]] var<uniform> canvas : CanvasConstants;
 
 [[stage(fragment)]]
-fn main([[builtin(position)]] coord : vec4<f32>)
+fn main([[builtin(position)]] coord : vec4<f32>,
+        [[location(0)]] fragUV : vec2<f32>)
      -> [[location(0)]] vec4<f32> {
   var result = vec3<f32>(0.0, 0.0, 0.0);
-  var c = coord.xy / canvas.size;
+//   var c = coord.xy / canvas.size;
+//   var c = fragUV;
 
   var position = textureLoad(
     gBufferPosition,
@@ -483,20 +506,53 @@ fn main([[builtin(position)]] coord : vec4<f32>)
     0
   ).rgb;
 
-//   for (var i : u32 = 0u; i < config.numLights; i = i + 1u) {
-  for (var i : u32 = 0u; i < config.numLights; i = i + 1u) {
-    var L = lightsBuffer.lights[i].position.xyz - position;
-    var distance = length(L);
-    if (distance > lightsBuffer.lights[i].radius) {
+
+  var V = normalize(camera.position.xyz - position);
+
+  let TILE_COUNT_X: u32 = $TILE_COUNT_Xu;
+  let TILE_COUNT_Y: u32 = $TILE_COUNT_Yu;
+
+  var tileScale = vec2<f32>(1.0 / f32(TILE_COUNT_X), 1.0 / f32(TILE_COUNT_Y));
+  var tileCoord = vec2<u32>(floor( fragUV / tileScale ));
+  var tileId: u32 = tileCoord.x + tileCoord.y * TILE_COUNT_X;
+
+  var c: u32 = atomicLoad(&tileLightId.data[tileId].count);
+  for (var i : u32 = 0u; i < c; i = i + 1u) {
+    var light: LightData = lightsBuffer.lights[ tileLightId.data[tileId].lightId[i] ];
+
+    var distance = distance(light.position.xyz, position);
+    if (distance  > light.radius) {
         continue;
     }
-    var lambert = max(dot(normal, normalize(L)), 0.0);
-    result = result + vec3<f32>(
-      lambert * pow(1.0 - distance / lightsBuffer.lights[i].radius, 2.0) * lightsBuffer.lights[i].color * albedo);
+
+    var L = normalize(light.position.xyz - position);
+    var lambert = max(dot(L, normal), 0.0);
+    var H = normalize(L + V);
+    var specular = f32(lambert > 0.0) * pow(max(dot(H, normal), 0.0), 10.0);
+
+    result = result +
+            clamp(light.color * pow(1.0 - distance / light.radius, 2.0) *
+            (
+                albedo * lambert + 
+                    vec3<f32>(1.0) * specular  // Assume white specular, modify if you add more specular info
+            ), vec3<f32>(0.0), vec3<f32>(1.0));
   }
 
-  // some manual ambient
-  result = result + vec3<f32>(0.2, 0.2, 0.2);
+
+//   for (var i : u32 = 0u; i < config.numLights; i = i + 1u) {
+// //   for (var i : u32 = 0u; i < 1024u; i = i + 1u) {
+//     var L = lightsBuffer.lights[i].position.xyz - position;
+//     var distance = length(L);
+//     if (distance > lightsBuffer.lights[i].radius) {
+//         continue;
+//     }
+//     var lambert = max(dot(normal, normalize(L)), 0.0);
+//     result = result + vec3<f32>(
+//       lambert * pow(1.0 - distance / lightsBuffer.lights[i].radius, 2.0) * lightsBuffer.lights[i].color * albedo);
+//   }
+
+// //   // some manual ambient
+// //   result = result + vec3<f32>(0.2, 0.2, 0.2);
 
   return vec4<f32>(result, 1.0);
 }
@@ -549,7 +605,7 @@ export default class DeferredRenderer {
         this.debugViewOffset = 0.5;
         this.renderFuncs = {
             'debugView': this.renderGBufferDebugView,
-            'deferredLightLoop': this.renderDeferredLightLoop,
+            // 'deferredLightLoop': this.renderDeferredLightLoop,
             'deferredTiledLightDebug': this.renderDeferredTiledLightDebug,
             'deferredTiledLightCulling': this.renderDeferredLightCulling,
         };
@@ -832,25 +888,25 @@ export default class DeferredRenderer {
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
         });
 
-        this.cameraPositionUniformBindGroup = this.device.createBindGroup({
-            layout: this.uniformBufferBindGroupLayout,
-            // layout: this.pipeline.getBindGroupLayout(),
-            entries: [
-                {
-                    binding: 0,
-                    resource: {
-                        buffer: cameraPositionUniformBuffer,
-                        offset: 0,
-                        size: 16
-                    }
-                }
-            ]
-        });
+        // this.cameraPositionUniformBindGroup = this.device.createBindGroup({
+        //     layout: this.uniformBufferBindGroupLayout,
+        //     // layout: this.pipeline.getBindGroupLayout(),
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             resource: {
+        //                 buffer: cameraPositionUniformBuffer,
+        //                 offset: 0,
+        //                 size: 16
+        //             }
+        //         }
+        //     ]
+        // });
 
         this.setupGBufferDebugViewPipeline();
         // this.setupDeferredLightLoopPipeline();
         this.setupDeferredTiledLightDebugPipeline();
-        // this.setupDeferredLightCullingPipeline();
+        this.setupDeferredLightCullingPipeline();
     }
 
     setupGBufferDebugViewPipeline() {
@@ -1070,17 +1126,17 @@ export default class DeferredRenderer {
     }
 
     setupDeferredLightCullingPipeline() {
-        const deferredLightCullingPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
-            // this.quadUniformsBindGroupLayout,
-            this.gbufferDebugViewPipeline.getBindGroupLayout(0),
-            this.uniformBufferBindGroupLayout,
-            this.lightCulling.storageBufferBindGroupLayout,
-            this.lightCulling.storageBufferBindGroupLayout,
-        ] });
+        // const deferredLightCullingPipelineLayout = this.device.createPipelineLayout({ bindGroupLayouts: [
+        //     // this.quadUniformsBindGroupLayout,
+        //     this.gbufferDebugViewPipeline.getBindGroupLayout(0),
+        //     this.uniformBufferBindGroupLayout,
+        //     this.lightCulling.storageBufferBindGroupLayout,
+        //     this.lightCulling.storageBufferBindGroupLayout,
+        // ] });
         this.deferredLightCullingPipeline = this.device.createRenderPipeline({
             // layout: deferredLightCullingPipelineLayout,
 
-            vertexStage: {
+            vertex: {
                 module: this.device.createShaderModule({
                     code: vertexShaderFullScreenQuad,
                 }),
@@ -1102,14 +1158,20 @@ export default class DeferredRenderer {
                     }]
                 }]
             },
-            fragmentStage: {
+            fragment: {
                 module: this.device.createShaderModule({
                     // code: replaceArray(fragmentShaderDeferredShadingTiled,
                     //         ["$1", "$2", "$3", "$4", "$5"],
                     //         [this.lightCulling.numLights, this.lightCulling.numTiles, this.lightCulling.tileCount[0], this.lightCulling.tileCount[1], this.lightCulling.tileLightSlot]),
-                    code: fragmentShaderDeferredShadingTiled,
+                    // code: fragmentShaderDeferredShadingTiled,
+                    code: replaceArray(fragmentShaderDeferredShadingTiled,
+                        ['$NUM_TILE_LIGHT_SLOT', '$2', '$NUM_TILES', '$TILE_COUNT_Y', '$TILE_COUNT_X', '$TILE_SIZE'],
+                        [this.lightCulling.tileLightSlot, this.lightCulling.tileLightSlot, this.lightCulling.numTiles, this.lightCulling.tileCount[1], this.lightCulling.tileCount[0], this.lightCulling.tileSize])
                 }),
-                entryPoint: "main"
+                entryPoint: "main",
+                targets: [
+                    { format: 'bgra8unorm' },
+                ],
             },
             primitive: {
                 topology: 'triangle-list',
@@ -1126,6 +1188,40 @@ export default class DeferredRenderer {
             //     alphaBlend: {},
             //     colorBlend: {}
             // }]
+        });
+
+
+
+
+
+        this.deferredFinalBindGroup = this.device.createBindGroup({
+            layout: this.deferredLightCullingPipeline.getBindGroupLayout(1),
+            entries: [
+              {
+                binding: 0,
+                resource: {
+                  buffer: this.cameraPositionUniformBuffer,
+                },
+              },
+              {
+                binding: 1,
+                resource: {
+                  buffer: this.lightCulling.lightDataGPUBuffer,
+                },
+              },
+              {
+                binding: 2,
+                resource: {
+                  buffer: this.lightCulling.tileLightIdGPUBuffer,
+                },
+              },
+            //   {
+            //     binding: 3,
+            //     resource: {
+            //       buffer: this.lightCulling.configUniformBuffer,
+            //     },
+            //   },
+            ],
         });
     }
 
@@ -1244,34 +1340,34 @@ export default class DeferredRenderer {
         quadPassEncoder.endPass();
     }
 
-    renderDeferredLightLoop(commandEncoder) {
-        // this.lightCulling.update();     // TODO: only update light position (might have a separate compute shader that only do that)
+    // renderDeferredLightLoop(commandEncoder) {
+    //     // this.lightCulling.update();     // TODO: only update light position (might have a separate compute shader that only do that)
 
-        const swapChainTexture = this.context.getCurrentTexture();
+    //     const swapChainTexture = this.context.getCurrentTexture();
 
-        // this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
-        let v = this.camera.getPosition();
-        this.device.queue.writeBuffer(
-            this.cameraPositionUniformBuffer,
-            0,
-            v.buffer,
-            v.byteOffset,
-            v.byteLength
-        );
+    //     // this.cameraPositionUniformBuffer.setSubData(0, this.camera.getPosition());
+    //     let v = this.camera.getPosition();
+    //     this.device.queue.writeBuffer(
+    //         this.cameraPositionUniformBuffer,
+    //         0,
+    //         v.buffer,
+    //         v.byteOffset,
+    //         v.byteLength
+    //     );
 
-        this.renderFullScreenPassDescriptor.colorAttachments[0].view = swapChainTexture.createView();
+    //     this.renderFullScreenPassDescriptor.colorAttachments[0].view = swapChainTexture.createView();
         
-        const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
-        quadPassEncoder.setPipeline(this.deferredLightLoopPipeline);
-        quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
-        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
-        quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
-        quadPassEncoder.setBindGroup(2, this.lightCulling.lightBufferBindGroup);
+    //     const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
+    //     quadPassEncoder.setPipeline(this.deferredLightLoopPipeline);
+    //     quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
+    //     quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+    //     quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
+    //     quadPassEncoder.setBindGroup(2, this.lightCulling.lightBufferBindGroup);
 
-        quadPassEncoder.draw(6, 1, 0, 0);
+    //     quadPassEncoder.draw(6, 1, 0, 0);
 
-        quadPassEncoder.endPass();
-    }
+    //     quadPassEncoder.endPass();
+    // }
 
     renderDeferredTiledLightDebug(commandEncoder) {
         this.lightCulling.update();
@@ -1304,9 +1400,11 @@ export default class DeferredRenderer {
         quadPassEncoder.setPipeline(this.deferredLightCullingPipeline);
         quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
         quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
-        quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
-        quadPassEncoder.setBindGroup(2, this.lightCulling.lightBufferBindGroup);
-        quadPassEncoder.setBindGroup(3, this.lightCulling.tileLightIdBufferBindGroup);
+        quadPassEncoder.setBindGroup(1, this.deferredFinalBindGroup);
+        // quadPassEncoder.setBindGroup(1, this.cameraPositionUniformBindGroup);
+        // quadPassEncoder.setBindGroup(2, this.lightCulling.lightBufferBindGroup);
+        // quadPassEncoder.setBindGroup(3, this.lightCulling.tileLightIdBufferBindGroup);
+        // quadPassEncoder.setBindGroup(4, this.lightCulling.configBindGroup);
 
         quadPassEncoder.draw(6, 1, 0, 0);
 

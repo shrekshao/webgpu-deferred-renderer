@@ -498,6 +498,7 @@ export default class LightCulling {
             buffer.unmap();
             return buffer;
         })();
+        this.configUniformBuffer = configUniformBuffer;
 
 
         // const lightBufferBindGroupLayout = this.device.createBindGroupLayout({
