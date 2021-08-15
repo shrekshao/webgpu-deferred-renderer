@@ -33,6 +33,7 @@ export default class Camera {
         };
         const aspect = Math.abs(canvas.width / canvas.height);
         
+        // TODO: use perspectiveZO for WebGPU NDC space
         mat4.perspective(this.projectionMatrix, (2 * Math.PI) / 5, aspect, 0.1, 100.0);
 
         canvas.onmousedown = function(event) {
@@ -82,7 +83,6 @@ export default class Camera {
         }.bind(this);
         window.onwheel = function(event) {
             // panning
-            // vec3.scale(tmpVec3, this.view, delta * 0.01);
             vec3.scale(tmpVec3, this.view, event.deltaY * 0.01);
             vec3.add(this.eye, this.eye, tmpVec3);
 

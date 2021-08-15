@@ -53,7 +53,6 @@ export default class Geometry {
             size: this.vertices.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-        // this.verticesBuffer.setSubData(0, this.vertices);
         this.device.queue.writeBuffer(
             this.verticesBuffer,
             0,
@@ -66,7 +65,6 @@ export default class Geometry {
             size: this.normals.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-        // this.normalsBuffer.setSubData(0, this.normals);
         this.device.queue.writeBuffer(
             this.normalsBuffer,
             0,
@@ -79,7 +77,6 @@ export default class Geometry {
             size: this.uvs.byteLength,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
         });
-        // this.uvsBuffer.setSubData(0, this.uvs);
         this.device.queue.writeBuffer(
             this.uvsBuffer,
             0,
@@ -92,7 +89,6 @@ export default class Geometry {
             size: this.indices.byteLength,
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
         });
-        // this.indicesBuffer.setSubData(0, this.indices);
         this.device.queue.writeBuffer(
             this.indicesBuffer,
             0,
