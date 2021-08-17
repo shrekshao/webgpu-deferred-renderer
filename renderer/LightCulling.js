@@ -73,7 +73,8 @@ fn main([[builtin(global_invocation_id)]] GlobalInvocationID : vec3<u32>) {
     var viewNear: f32 = - M[3][2] / ( -1.0 + M[2][2]);
     var viewFar: f32 = - M[3][2] / (1.0 + M[2][2]);
 
-    var lightPos: vec4<f32> = uniforms.viewMatrix * lightsBuffer.lights[index].position;
+    var lightPos = lightsBuffer.lights[index].position;
+    lightPos = uniforms.viewMatrix * lightPos;
     lightPos = lightPos / lightPos.w;
 
     var lightRadius: f32 = lightsBuffer.lights[index].radius;
