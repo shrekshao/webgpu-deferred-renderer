@@ -28,9 +28,9 @@ fn main([[location(0)]] position : vec4<f32>,
 `;
 
 const fragmentShaderGBufferDebugView = `
-[[group(0), binding(1)]] var gBufferPosition: texture_2d<f32>;
-[[group(0), binding(2)]] var gBufferNormal: texture_2d<f32>;
-[[group(0), binding(3)]] var gBufferAlbedo: texture_2d<f32>;
+[[group(0), binding(0)]] var gBufferPosition: texture_2d<f32>;
+[[group(0), binding(1)]] var gBufferNormal: texture_2d<f32>;
+[[group(0), binding(2)]] var gBufferAlbedo: texture_2d<f32>;
 
 [[stage(fragment)]]
 fn main([[builtin(position)]] coord : vec4<f32>,
@@ -104,9 +104,9 @@ fn main([[builtin(position)]] coord : vec4<f32>,
 `;
 
 const fragmentShaderDeferredShadingTiled = `
-[[group(0), binding(1)]] var gBufferPosition: texture_2d<f32>;
-[[group(0), binding(2)]] var gBufferNormal: texture_2d<f32>;
-[[group(0), binding(3)]] var gBufferAlbedo: texture_2d<f32>;
+[[group(0), binding(0)]] var gBufferPosition: texture_2d<f32>;
+[[group(0), binding(1)]] var gBufferNormal: texture_2d<f32>;
+[[group(0), binding(2)]] var gBufferAlbedo: texture_2d<f32>;
 
 [[block]] struct CameraPositionUniform {
     position: vec4<f32>;
@@ -130,6 +130,7 @@ struct TileLightIdData {
 [[block]] struct Tiles {
     data: array<TileLightIdData, $NUM_TILES>;
 };
+// [[group(0), binding(0)]] var<storage, read_write> tileLightId: Tiles;
 [[group(1), binding(2)]] var<storage, read_write> tileLightId: Tiles;
 
 [[stage(fragment)]]
@@ -445,62 +446,62 @@ export default class DeferredRenderer {
             fullScreenQuadArray.byteLength
         );
 
-        this.quadUniformsBindGroupLayout = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    sampler: {
-                        type: "filtering",  //f32 is not filterable
-                    }
-                },
-                {
-                    binding: 1,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    texture: {
-                        sampleType: 'float',
-                    }
-                },
-                {
-                    binding: 2,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    texture: {
-                        sampleType: 'float',
-                    }
-                },
-                {
-                    binding: 3,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    texture: {
-                        sampleType: 'float',
-                    }
-                },
-            ]
-        });
+        // this.quadUniformsBindGroupLayout = device.createBindGroupLayout({
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             sampler: {
+        //                 type: "filtering",  //f32 is not filterable
+        //             }
+        //         },
+        //         {
+        //             binding: 1,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             texture: {
+        //                 sampleType: 'float',
+        //             }
+        //         },
+        //         {
+        //             binding: 2,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             texture: {
+        //                 sampleType: 'float',
+        //             }
+        //         },
+        //         {
+        //             binding: 3,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             texture: {
+        //                 sampleType: 'float',
+        //             }
+        //         },
+        //     ]
+        // });
 
-        this.uniformBufferBindGroupLayout = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    buffer: {
-                        type: 'uniform',
-                    }
-                },
-            ]
-        });
-        this.dynamicUniformBufferBindGroupLayout = device.createBindGroupLayout({
-            entries: [
-                {
-                    binding: 0,
-                    visibility: GPUShaderStage.FRAGMENT,
-                    buffer: {
-                        type: 'uniform',
-                        hasDynamicOffsets: true,
-                    }
-                },
-            ]
-        });
+        // this.uniformBufferBindGroupLayout = device.createBindGroupLayout({
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             buffer: {
+        //                 type: 'uniform',
+        //             }
+        //         },
+        //     ]
+        // });
+        // this.dynamicUniformBufferBindGroupLayout = device.createBindGroupLayout({
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             visibility: GPUShaderStage.FRAGMENT,
+        //             buffer: {
+        //                 type: 'uniform',
+        //                 hasDynamicOffsets: true,
+        //             }
+        //         },
+        //     ]
+        // });
 
         this.renderFullScreenPassDescriptor = {
             colorAttachments: [{
@@ -560,38 +561,65 @@ export default class DeferredRenderer {
             },
         });
 
-        const debugViewUniformBufferSize = 16;
-        const debugViewUniformBuffer = this.debugViewUniformBuffer = this.device.createBuffer({
-            size: debugViewUniformBufferSize,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        });
+        // const debugViewUniformBufferSize = 16;
+        // const debugViewUniformBuffer = this.debugViewUniformBuffer = this.device.createBuffer({
+        //     size: debugViewUniformBufferSize,
+        //     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        // });
 
-        this.debugViewUniformBindGroup = this.device.createBindGroup({
-            layout: this.uniformBufferBindGroupLayout,
+        // this.debugViewUniformBindGroup = this.device.createBindGroup({
+        //     layout: this.uniformBufferBindGroupLayout,
+        //     entries: [
+        //         {
+        //             binding: 0,
+        //             resource: {
+        //                 buffer: debugViewUniformBuffer,
+        //                 offset: 0,
+        //             }
+        //         }
+        //     ]
+        // });
+
+        const gBufferTexturesBindGroupLayout = this.device.createBindGroupLayout({
             entries: [
                 {
-                    binding: 0,
-                    resource: {
-                        buffer: debugViewUniformBuffer,
-                        offset: 0,
-                    }
-                }
-            ]
+                binding: 0,
+                visibility: GPUShaderStage.FRAGMENT,
+                texture: {
+                    sampleType: 'unfilterable-float',
+                },
+                },
+                {
+                binding: 1,
+                visibility: GPUShaderStage.FRAGMENT,
+                texture: {
+                    sampleType: 'unfilterable-float',
+                },
+                },
+                {
+                binding: 2,
+                visibility: GPUShaderStage.FRAGMENT,
+                texture: {
+                    sampleType: 'unfilterable-float',
+                },
+                },
+            ],
         });
 
         this.quadUniformBindGroup = this.device.createBindGroup({
             layout: this.gbufferDebugViewPipeline.getBindGroupLayout(0),
+            // layout: gBufferTexturesBindGroupLayout,
             entries: [
                 {
-                    binding: 1,
+                    binding: 0,
                     resource: this.gbufferTextures[0].createView()
                 },
                 {
-                    binding: 2,
+                    binding: 1,
                     resource: this.gbufferTextures[1].createView()
                 },
                 {
-                    binding: 3,
+                    binding: 2,
                     resource: this.gbufferTextures[2].createView()
                 },
             ]
@@ -663,9 +691,22 @@ export default class DeferredRenderer {
             },
         });
 
+        this.tileLightIdBufferBindGroupLayout = this.device.createBindGroupLayout({
+            entries: [
+                {
+                  binding: 0,
+                  visibility: GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+                  buffer: {
+                    type: 'storage',
+                  },
+                },
+              ],
+        });
+
         // For fragment usage
         this.tileLightIdBufferBindGroup = this.device.createBindGroup({
             layout: this.deferredTiledLightDebugPipeline.getBindGroupLayout(0),
+            // layout: this.tileLightIdBufferBindGroupLayout,
             entries: [
               {
                 binding: 0,
@@ -740,6 +781,25 @@ export default class DeferredRenderer {
                 },
               },
             ],
+        });
+
+        this.quadUniformBindGroup2 = this.device.createBindGroup({
+            layout: this.deferredLightCullingPipeline.getBindGroupLayout(0),
+            // layout: gBufferTexturesBindGroupLayout,
+            entries: [
+                {
+                    binding: 0,
+                    resource: this.gbufferTextures[0].createView()
+                },
+                {
+                    binding: 1,
+                    resource: this.gbufferTextures[1].createView()
+                },
+                {
+                    binding: 2,
+                    resource: this.gbufferTextures[2].createView()
+                },
+            ]
         });
     }
 
@@ -879,8 +939,10 @@ export default class DeferredRenderer {
         const quadPassEncoder = commandEncoder.beginRenderPass(this.renderFullScreenPassDescriptor);
         quadPassEncoder.setPipeline(this.deferredLightCullingPipeline);
         quadPassEncoder.setVertexBuffer(0, this.quadVerticesBuffer);
-        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup);
+        // quadPassEncoder.setBindGroup(0, this.tileLightIdBufferBindGroup);
         quadPassEncoder.setBindGroup(1, this.deferredFinalBindGroup);
+        // quadPassEncoder.setBindGroup(2, this.quadUniformBindGroup);
+        quadPassEncoder.setBindGroup(0, this.quadUniformBindGroup2);
 
         quadPassEncoder.draw(6, 1, 0, 0);
 
